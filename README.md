@@ -1,13 +1,13 @@
 
 # dali2mqtt
 DALI <-> MQTT bridge
-## This is a fork of [dali2mqtt](https://github.com/dgomes/dali2mqtt).
+# <ins>This is a fork of [dali2mqtt](https://github.com/dgomes/dali2mqtt) from [dgomes.](https://github.com/dgomes) </ins>
+
+
 
 ## About
 
 This daemon is inspired in [zigbee2mqtt](https://github.com/Koenkk/zigbee2mqtt) and provides the means to integrate a DALI light controller into your Home Assistant setup.
-
-Previously I developed a Home Assistant custom component (https://github.com/dgomes/home-assistant-custom-components/tree/master/light) but I've since decided to run Home Assistant in another device, away from the physical DALI Bus.
 
 ## Supported Devices
 
