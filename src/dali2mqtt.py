@@ -290,7 +290,12 @@ def main(args):
 
         dali_driver = SyncHassebDALIUSBDriver()
 
-        firmware_version = float(dali_driver.readFirmwareVersion())
+        try:
+            firmware_version = float(dali_driver.readFirmwareVersion())
+        except AttributeError:
+            logger.error("Could not open device. Is the hasseb adapter connected and has the right permissions?")
+            quit(1)
+            return
         if firmware_version < MIN_HASSEB_FIRMWARE_VERSION:
             logger.error("Using dali2mqtt requires newest hasseb firmware")
             logger.error(
