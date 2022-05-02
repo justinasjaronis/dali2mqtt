@@ -302,6 +302,8 @@ def main(args):
                 "Please, look at https://github.com/hasseb/python-dali/tree/master/dali/driver/hasseb_firmware"
             )
             quit(1)
+        # Force disable sniffing, as we get strange return values when sniffing is enabled
+        dali_driver.disableSniffing()
     elif config[CONF_DALI_DRIVER] == TRIDONIC:
         from dali.driver.tridonic import SyncTridonicDALIUSBDriver
 
