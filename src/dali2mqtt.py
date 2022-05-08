@@ -346,4 +346,7 @@ def main(args):
         dali_driver = DaliServer("localhost", 55825)
 
     mqttc = create_mqtt_client(dali_driver)
-    mqttc.loop_forever()
+    try:
+        mqttc.loop_forever()
+    except KeyboardInterrupt:
+        logger.info("Shutting down")
