@@ -20,7 +20,7 @@ from .consts import *
 logging.basicConfig(format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
-def dali_scan(driver):
+def scan_lamps(driver):
     """Scan a maximum number of dali devices."""
     lamps = []
     config = Config()
@@ -33,6 +33,7 @@ def dali_scan(driver):
                 logger.debug("Found lamp at address %d", lamp)
                 if len(lamps) >= config[CONF_DALI_LAMPS]:
                     logger.warning("All %s configured lamps have been found, Stopping scan",  config[CONF_DALI_LAMPS])
+                    logger.info("Found %d lamps", len(lamps))
                     return lamps
         except DALIError as err:
             logger.warning("%s not present: %s", lamp, err)
@@ -41,7 +42,7 @@ def dali_scan(driver):
     return lamps
 
 def scan_groups(dali_driver, lamps):
-    logger.info("Scanning for groups")
+    logger.info("Scanning for groups:")
     groups = {}
     for lamp in lamps:
         try:
@@ -75,8 +76,9 @@ def scan_groups(dali_driver, lamps):
 def initialize_lamps(data_object, client):
     logger.info("initializing lamps...")
     driver_object = data_object["driver"]
-    lamps = dali_scan(driver_object)
-    
+    lamps = scan_lamps(driver_object)
+
+    logger.info("Getting lamp parameters:")
     for lamp in lamps:
         try:
             _address = address.Short(lamp)
@@ -144,6 +146,7 @@ def on_message_cmd(mqtt_client, data_object, msg):
 def on_message_reinitialize_lamps_cmd(mqtt_client, data_object, msg):
     """Callback on MQTT scan lamps command message"""
     logger.debug("Reinitialize Command on %s", msg.topic)
+    logger.info("Reinitializing lamps")
     config = Config()
     mqtt_client.publish(
         MQTT_DALI2MQTT_STATUS.format(config[CONF_MQTT_BASE_TOPIC]), MQTT_NOT_AVAILABLE, retain=True
@@ -152,11 +155,13 @@ def on_message_reinitialize_lamps_cmd(mqtt_client, data_object, msg):
 
 def on_message_poll_lamps_cmd(mqtt_client, data_object, msg):
     """Callback on MQTT poll lamps command message"""
-    logger.info("Poll lamps command on %s", msg.topic)
+    logger.debug("Poll lamps command on %s", msg.topic)
+    logger.info("Polling lamps")
     for _x in data_object["all_lamps"].values():
         _x.pollLevel()
     for _x in data_object["all_groups"].values():
         _x.recalc_level()
+    logger.info("Polling lamps finished")
 
 def get_lamp_object(data_object,light):
     if 'group_' in light:
