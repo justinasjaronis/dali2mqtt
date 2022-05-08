@@ -222,9 +222,9 @@ def on_connect(client, data_object, flags, result):  # pylint: disable=W0613,R09
         MQTT_DALI2MQTT_STATUS.format(config[CONF_MQTT_BASE_TOPIC]), MQTT_NOT_AVAILABLE, retain=True
     )
     initialize_lamps(data_object, client)
-    register_buttons(client)
+    register_bridge(client)
 
-def register_buttons(client):
+def register_bridge(client):
     logger.info("registering buttons")
     config = Config()
     for button in BUTTONS:
@@ -234,7 +234,6 @@ def register_buttons(client):
             "command_topic": button['command_topic'].format(
                 config[CONF_MQTT_BASE_TOPIC]
             ),
-            "device_class": button['device_class'],
             "entity_category": button['entity_category'],
             "availability_topic": MQTT_DALI2MQTT_STATUS.format(config[CONF_MQTT_BASE_TOPIC]),
             "payload_available": MQTT_AVAILABLE,
@@ -247,9 +246,10 @@ def register_buttons(client):
             },
         }
 
-        if json_config['device_class'] is None:
-            del(json_config['device_class'])
+        if json_config['device_class'] is not None:
+            json_config["device_class"] = button['device_class']
 
+        logger.debug(f"Register button {button['name']}")
         client.publish(
             HA_DISCOVERY_PREFIX_BUTTON.format(config[CONF_HA_DISCOVERY_PREFIX], config[CONF_MQTT_BASE_TOPIC], slugify(button['name'])),
             json.dumps(json_config),
