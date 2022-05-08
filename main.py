@@ -1,6 +1,5 @@
 import os
 
-import Integer as Integer
 import yaml
 import argparse
 
