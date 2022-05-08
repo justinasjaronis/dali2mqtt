@@ -246,7 +246,7 @@ def register_bridge(client):
             },
         }
 
-        if json_config['device_class'] is not None:
+        if 'device_class' in button and button['device_class'] is not None:
             json_config["device_class"] = button['device_class']
 
         logger.debug(f"Register button {button['name']}")
