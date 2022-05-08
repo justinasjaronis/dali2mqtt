@@ -105,7 +105,7 @@ BUTTONS = [
     {
         "name": "Poll lamps",
         "command_topic": MQTT_POLL_LAMPS_COMMAND_TOPIC,
-        "device_class": "none",
+        "device_class": None,
         "entity_category": "config"
     },
     {

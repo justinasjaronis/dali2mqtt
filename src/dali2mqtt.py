@@ -240,13 +240,15 @@ def register_buttons(client):
             "payload_available": MQTT_AVAILABLE,
             "payload_not_available": MQTT_NOT_AVAILABLE,
             "device": {
-                "identifiers": f"{config[CONF_MQTT_BASE_TOPIC]}_BUTTON_{slugify(button['name'])}",
-                "via_device": config[CONF_MQTT_BASE_TOPIC],
-                "name": f"DALI Button {button['name']}",
-                "sw_version": f"dali2mqtt {VERSION}",
+                "identifiers": config[CONF_MQTT_BASE_TOPIC],
+                "name": f"DALI2MQTT Bridge",
+                "sw_version": VERSION,
                 "manufacturer": AUTHOR
             },
         }
+
+        if json_config['device_class'] is None:
+            del(json_config['device_class'])
 
         client.publish(
             HA_DISCOVERY_PREFIX_BUTTON.format(config[CONF_HA_DISCOVERY_PREFIX], config[CONF_MQTT_BASE_TOPIC], slugify(button['name'])),
