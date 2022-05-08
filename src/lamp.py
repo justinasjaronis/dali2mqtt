@@ -36,7 +36,7 @@ class Lamp:
         self._getLevelDALI()
 
         self.mqtt.publish(
-            HA_DISCOVERY_PREFIX.format(self.config[CONF_HA_DISCOVERY_PREFIX], self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
+            HA_DISCOVERY_PREFIX_LIGHT.format(self.config[CONF_HA_DISCOVERY_PREFIX], self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
             self.gen_ha_config(),
             retain=True,
         )

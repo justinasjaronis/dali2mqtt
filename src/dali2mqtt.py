@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Bridge between a DALI controller and an MQTT bus."""
-
+import json
 import re
 import traceback
 
@@ -9,6 +9,7 @@ import dali.address as address
 import dali.gear.general as gear
 from dali.command import YesNoResponse
 from dali.exceptions import DALIError
+from slugify import slugify
 
 from .config import Config
 from .group import Group
@@ -72,6 +73,7 @@ def scan_groups(dali_driver, lamps):
     return groups
 
 def initialize_lamps(data_object, client):
+    logger.info("initializing lamps...")
     driver_object = data_object["driver"]
     lamps = dali_scan(driver_object)
     
@@ -111,7 +113,7 @@ def initialize_lamps(data_object, client):
     client.publish(
         MQTT_DALI2MQTT_STATUS.format(config[CONF_MQTT_BASE_TOPIC]), MQTT_AVAILABLE, retain=True
     )
-    logger.info("initialize_lamps finished")
+    logger.info("initializing lamps finished")
 
 def on_message_cmd(mqtt_client, data_object, msg):
     """Callback on MQTT command message."""
@@ -220,7 +222,37 @@ def on_connect(client, data_object, flags, result):  # pylint: disable=W0613,R09
         MQTT_DALI2MQTT_STATUS.format(config[CONF_MQTT_BASE_TOPIC]), MQTT_NOT_AVAILABLE, retain=True
     )
     initialize_lamps(data_object, client)
+    register_buttons(client)
 
+def register_buttons(client):
+    logger.info("registering buttons")
+    config = Config()
+    for button in BUTTONS:
+        json_config = {
+            "name": button['name'],
+            "unique_id": "DALI2MQTT_LIGHT_{}".format(slugify(button['name'])),
+            "command_topic": button['command_topic'].format(
+                config[CONF_MQTT_BASE_TOPIC]
+            ),
+            "device_class": button['device_class'],
+            "entity_category": button['entity_category'],
+            "availability_topic": MQTT_DALI2MQTT_STATUS.format(config[CONF_MQTT_BASE_TOPIC]),
+            "payload_available": MQTT_AVAILABLE,
+            "payload_not_available": MQTT_NOT_AVAILABLE,
+            "device": {
+                "identifiers": f"{config[CONF_MQTT_BASE_TOPIC]}_BUTTON_{slugify(button['name'])}",
+                "via_device": config[CONF_MQTT_BASE_TOPIC],
+                "name": f"DALI Button {button['name']}",
+                "sw_version": f"dali2mqtt {VERSION}",
+                "manufacturer": AUTHOR
+            },
+        }
+
+        client.publish(
+            HA_DISCOVERY_PREFIX_BUTTON.format(config[CONF_HA_DISCOVERY_PREFIX], config[CONF_MQTT_BASE_TOPIC], slugify(button['name'])),
+            json.dumps(json_config),
+            retain=True,
+        )
 
 def create_mqtt_client(driver_object):
     """Create MQTT client object, setup callbacks and connection to server."""
