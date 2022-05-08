@@ -1,4 +1,6 @@
 import os
+
+import Integer as Integer
 import yaml
 import argparse
 
@@ -70,7 +72,12 @@ for _x in os.environ:
             logger.error(f"Invalid env parameter {_x}")
             exit(1)
         if CONFIG.get(_x[4:].lower()) != os.environ[_x]:
-            CONFIG[_x[4:].lower()] = os.environ[_x]
+            if type(CONFIG[_x[4:].lower()]) is int:
+                CONFIG[_x[4:].lower()] = int(os.environ[_x])
+            if type(CONFIG[_x[4:].lower()]) is bool:
+                CONFIG[_x[4:].lower()] = bool(os.environ[_x])
+            else:
+                CONFIG[_x[4:].lower()] = os.environ[_x]
 
 args.pop(CONF_CONFIG)
 args.pop(CONF_CONFIG_EXAMPLE)
