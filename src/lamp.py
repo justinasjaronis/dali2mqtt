@@ -71,7 +71,7 @@ class Lamp:
         """Generate a automatic configuration for Home Assistant."""
         json_config = {
             "name": self.friendly_name,
-            "unique_id": "DALI2MQTT_LIGHT_{}".format(self.device_name),
+            "unique_id": "DALI2MQTT_LAMP_{}".format(self.device_name),
             "state_topic": MQTT_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
             "command_topic": MQTT_COMMAND_TOPIC.format(
                 self.config[CONF_MQTT_BASE_TOPIC], self.device_name
@@ -91,7 +91,7 @@ class Lamp:
             "device": {
                 "identifiers": f"{self.config[CONF_MQTT_BASE_TOPIC]}_A{self.address}",
                 "via_device": self.config[CONF_MQTT_BASE_TOPIC],
-                "name": f"DALI Light {self.address}",
+                "name": f"DALI Lamp {self.address}",
                 "sw_version": f"dali2mqtt {VERSION}",
                 "manufacturer": AUTHOR,
                 "connections": [("DALI", f"A{self.address}")]

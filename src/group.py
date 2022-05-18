@@ -30,7 +30,7 @@ class Group:
         self.min_levels = min(x.min_levels for x in self.lamps)
         self.max_level = max(x.max_level for x in self.lamps)
 
-        self.friendly_name = DevicesNamesConfig().get_friendly_name(f"group_{self.address}")
+        self.friendly_name = DevicesNamesConfig().get_friendly_name(f"DALI Group {self.address}")
         self.device_name = slugify(self.friendly_name)
 
         self.mqtt.publish(

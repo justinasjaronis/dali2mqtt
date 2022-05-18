@@ -235,7 +235,7 @@ def register_bridge(client):
     for button in BUTTONS:
         json_config = {
             "name": button['name'],
-            "unique_id": "DALI2MQTT_LIGHT_{}".format(slugify(button['name'])),
+            "unique_id": "DALI2MQTT_BUTTON_{}".format(slugify(button['name'])),
             "command_topic": button['command_topic'].format(
                 config[CONF_MQTT_BASE_TOPIC]
             ),
