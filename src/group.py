@@ -104,12 +104,12 @@ class Group:
             "payload_available": MQTT_AVAILABLE,
             "payload_not_available": MQTT_NOT_AVAILABLE,
             "device": {
-                "identifiers": f"{self.config[CONF_MQTT_BASE_TOPIC]}_A{self.address}",
+                "identifiers": f"{self.config[CONF_MQTT_BASE_TOPIC]}_G{self.address}",
                 "via_device": self.config[CONF_MQTT_BASE_TOPIC],
-                "name": f"DALI Group G{self.address}",
+                "name": f"DALI Group {self.address}",
                 "sw_version": f"dali2mqtt {VERSION}",
                 "manufacturer": AUTHOR,
-                "connections": [("DALI", f"A{self.address}")]
+                "connections": [("DALI", f"G{self.address}")]
             },
         }
         return json.dumps(json_config)

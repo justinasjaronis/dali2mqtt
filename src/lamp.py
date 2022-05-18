@@ -91,7 +91,7 @@ class Lamp:
             "device": {
                 "identifiers": f"{self.config[CONF_MQTT_BASE_TOPIC]}_A{self.address}",
                 "via_device": self.config[CONF_MQTT_BASE_TOPIC],
-                "name": f"DALI Light A{self.address}",
+                "name": f"DALI Light {self.address}",
                 "sw_version": f"dali2mqtt {VERSION}",
                 "manufacturer": AUTHOR,
                 "connections": [("DALI", f"A{self.address}")]
