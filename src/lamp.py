@@ -1,5 +1,7 @@
 """Class to represent dali lamps"""
 import json
+from pprint import pprint
+
 import dali.gear.general as gear
 from slugify import slugify
 
@@ -14,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class Lamp:
-    def __init__(self, driver, mqtt, dali_lamp):
+    def __init__(self, driver, mqtt, dali_lamp, scenes):
         self.config = Config()
         logger.setLevel(ALL_SUPPORTED_LOG_LEVELS[self.config[CONF_LOG_LEVEL]])
 
@@ -22,6 +24,9 @@ class Lamp:
         self.mqtt = mqtt
         self.dali_lamp = dali_lamp
         self.address = dali_lamp.address
+        self.scenes = scenes
+
+        pprint(self.scenes)
 
         self.groups = []
 
@@ -110,15 +115,32 @@ class Lamp:
                 _x.recalc_level()
             self._sendLevelDALI(level)
 
+        self._sendLevelMQTT(level, old)
+
+    def setLevelScene(self, scene, dali=True):
+        if scene in self.scenes and self.scenes[scene] != "MASK":
+            level = self.scenes[scene]
+            old = self.level
+            self.level = level
+            if dali:
+                for _x in self.groups:
+                    _x.recalc_level()
+                self._sendSceneDALI(scene)
+
+            if self.level == level:
+                return
+            self._sendLevelMQTT(level, old)
+
+    def _sendLevelMQTT(self, level, old_level):
         self.mqtt.publish(
             MQTT_BRIGHTNESS_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
-            self.level,
+            level,
             retain=True,
         )
-        if old == 0 or level == 0:
+        if old_level == 0 or level == 0:
             self.mqtt.publish(
                 MQTT_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
-                MQTT_PAYLOAD_ON if self.level > 0 else MQTT_PAYLOAD_OFF,
+                MQTT_PAYLOAD_ON if level > 0 else MQTT_PAYLOAD_OFF,
                 retain=True,
             )
 
@@ -141,6 +163,10 @@ class Lamp:
         level = denormalize(level, 0, 255, self.min_levels, self.max_level)
         self.driver.send(gear.DAPC(self.dali_lamp, level))
         logger.debug(f"Set lamp {self.friendly_name} brightness level to {self.level} ({level})")
+
+    def _sendSceneDALI(self, scene):
+        self.driver.send(gear.GoToScene(self.dali_lamp, scene))
+        logger.debug(f"Call scene {scene} on lamp {self.friendly_name}")
 
     def _getLevelDALI(self):
         level = self.driver.send(gear.QueryActualLevel(self.dali_lamp)).value
