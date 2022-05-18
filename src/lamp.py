@@ -30,13 +30,13 @@ class Lamp:
         self.min_levels = max(self.min_physical_level, self.min_level)
         self.max_level = self.driver.send(gear.QueryMaxLevel(self.dali_lamp)).value
 
-        self.friendly_name = DevicesNamesConfig().get_friendly_name(f"lamp_{self.address}")
+        self.friendly_name = DevicesNamesConfig().get_friendly_name(f"DALI Lamp {self.address}")
         self.device_name = slugify(self.friendly_name)
 
         self._getLevelDALI()
 
         self.mqtt.publish(
-            HA_DISCOVERY_PREFIX.format(self.config[CONF_HA_DISCOVERY_PREFIX], self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
+            HA_DISCOVERY_PREFIX_LIGHT.format(self.config[CONF_HA_DISCOVERY_PREFIX], self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
             self.gen_ha_config(),
             retain=True,
         )
@@ -71,7 +71,7 @@ class Lamp:
         """Generate a automatic configuration for Home Assistant."""
         json_config = {
             "name": self.friendly_name,
-            "unique_id": "DALI2MQTT_LIGHT_{}".format(self.device_name),
+            "unique_id": "DALI2MQTT_LAMP_{}".format(self.device_name),
             "state_topic": MQTT_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
             "command_topic": MQTT_COMMAND_TOPIC.format(
                 self.config[CONF_MQTT_BASE_TOPIC], self.device_name
@@ -91,7 +91,7 @@ class Lamp:
             "device": {
                 "identifiers": f"{self.config[CONF_MQTT_BASE_TOPIC]}_A{self.address}",
                 "via_device": self.config[CONF_MQTT_BASE_TOPIC],
-                "name": f"DALI Light A{self.address}",
+                "name": f"DALI Lamp {self.address}",
                 "sw_version": f"dali2mqtt {VERSION}",
                 "manufacturer": AUTHOR,
                 "connections": [("DALI", f"A{self.address}")]

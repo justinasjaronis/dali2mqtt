@@ -30,11 +30,11 @@ class Group:
         self.min_levels = min(x.min_levels for x in self.lamps)
         self.max_level = max(x.max_level for x in self.lamps)
 
-        self.friendly_name = DevicesNamesConfig().get_friendly_name(f"group_{self.address}")
+        self.friendly_name = DevicesNamesConfig().get_friendly_name(f"DALI Group {self.address}")
         self.device_name = slugify(self.friendly_name)
 
         self.mqtt.publish(
-            HA_DISCOVERY_PREFIX.format(self.config[CONF_HA_DISCOVERY_PREFIX], self.config[CONF_MQTT_BASE_TOPIC],
+            HA_DISCOVERY_PREFIX_LIGHT.format(self.config[CONF_HA_DISCOVERY_PREFIX], self.config[CONF_MQTT_BASE_TOPIC],
                                        self.device_name),
             self.gen_ha_config(),
             retain=True,
@@ -104,12 +104,12 @@ class Group:
             "payload_available": MQTT_AVAILABLE,
             "payload_not_available": MQTT_NOT_AVAILABLE,
             "device": {
-                "identifiers": f"{self.config[CONF_MQTT_BASE_TOPIC]}_A{self.address}",
+                "identifiers": f"{self.config[CONF_MQTT_BASE_TOPIC]}_G{self.address}",
                 "via_device": self.config[CONF_MQTT_BASE_TOPIC],
-                "name": f"DALI Group G{self.address}",
+                "name": f"DALI Group {self.address}",
                 "sw_version": f"dali2mqtt {VERSION}",
                 "manufacturer": AUTHOR,
-                "connections": [("DALI", f"A{self.address}")]
+                "connections": [("DALI", f"G{self.address}")]
             },
         }
         return json.dumps(json_config)

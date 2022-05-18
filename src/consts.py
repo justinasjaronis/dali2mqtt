@@ -98,7 +98,23 @@ MQTT_PAYLOAD_OFF = b"OFF"
 MQTT_AVAILABLE = "online"
 MQTT_NOT_AVAILABLE = "offline"
 
-HA_DISCOVERY_PREFIX = "{}/light/{}/{}/config"
+HA_DISCOVERY_PREFIX_LIGHT = "{}/light/{}/{}/config"
+HA_DISCOVERY_PREFIX_BUTTON = "{}/button/{}/{}/config"
+
+BUTTONS = [
+    {
+        "name": "Poll lamps",
+        "command_topic": MQTT_POLL_LAMPS_COMMAND_TOPIC,
+        "device_class": None,
+        "entity_category": "config"
+    },
+    {
+        "name": "Reinitialize lamps",
+        "command_topic": MQTT_SCAN_LAMPS_COMMAND_TOPIC,
+        "device_class": "restart",
+        "entity_category": "config"
+    }
+]
 
 
 class SetupError(Exception):
