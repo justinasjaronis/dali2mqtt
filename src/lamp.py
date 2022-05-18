@@ -30,7 +30,7 @@ class Lamp:
         self.min_levels = max(self.min_physical_level, self.min_level)
         self.max_level = self.driver.send(gear.QueryMaxLevel(self.dali_lamp)).value
 
-        self.friendly_name = DevicesNamesConfig().get_friendly_name(f"lamp_{self.address}")
+        self.friendly_name = DevicesNamesConfig().get_friendly_name(f"DALI Lamp {self.address}")
         self.device_name = slugify(self.friendly_name)
 
         self._getLevelDALI()
