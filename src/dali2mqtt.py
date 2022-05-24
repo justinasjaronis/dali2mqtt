@@ -300,7 +300,7 @@ def create_mqtt_client(driver_object):
     if config[CONF_MQTT_USERNAME] != '':
         mqttc.username_pw_set(config[CONF_MQTT_USERNAME], config[CONF_MQTT_PASSWORD])
 
-    mqttc.connect(config[CONF_MQTT_SERVER], config[CONF_MQTT_PORT], 60)
+    mqttc.connect(config[CONF_MQTT_SERVER], config[CONF_MQTT_PORT], 180)
     return mqttc
 
 def main(args):
