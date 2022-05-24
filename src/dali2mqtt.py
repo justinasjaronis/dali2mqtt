@@ -77,16 +77,11 @@ def initialize_lamps(data_object, client):
     logger.info("initializing lamps...")
     driver_object = data_object["driver"]
     lamps = scan_lamps(driver_object)
-
     logger.info("Getting lamp parameters:")
     for lamp in lamps:
         try:
             _address = address.Short(lamp)
-            _scenes = []
-            for i in range(0, 16):
-                v = driver_object.send(gear.QuerySceneLevel(_address, i)).value
-                _scenes.append(v)
-            lamp = Lamp(driver_object, client, _address, _scenes)
+            lamp = Lamp(driver_object, client, _address)
             data_object["all_lamps"][lamp.address] = lamp
 
         except Exception as err:

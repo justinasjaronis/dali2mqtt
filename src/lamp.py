@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class Lamp:
-    def __init__(self, driver, mqtt, dali_lamp, scenes):
+    def __init__(self, driver, mqtt, dali_lamp):
         self.config = Config()
         logger.setLevel(ALL_SUPPORTED_LOG_LEVELS[self.config[CONF_LOG_LEVEL]])
 
@@ -24,9 +24,13 @@ class Lamp:
         self.mqtt = mqtt
         self.dali_lamp = dali_lamp
         self.address = dali_lamp.address
-        self.scenes = scenes
 
-        pprint(self.scenes)
+        _scenes = []
+        for i in range(0, 16):
+            v = driver.send(gear.QuerySceneLevel(self.dali_lamp, i)).value
+            _scenes.append(v)
+        self.scenes = _scenes
+        logger.debug(self.scenes)
 
         self.groups = []
 
