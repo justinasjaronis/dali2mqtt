@@ -77,12 +77,16 @@ def initialize_lamps(data_object, client):
     logger.info("initializing lamps...")
     driver_object = data_object["driver"]
     lamps = scan_lamps(driver_object)
+    client.loop()
+
     logger.info("Getting lamp parameters:")
     for lamp in lamps:
         try:
             _address = address.Short(lamp)
             lamp = Lamp(driver_object, client, _address)
             data_object["all_lamps"][lamp.address] = lamp
+
+            client.loop()
 
         except Exception as err:
             logger.error("While initializing lamp<%s>: %s", lamp, err)
@@ -105,6 +109,7 @@ def initialize_lamps(data_object, client):
             logger.error("While initializing group<%s>: %s", group, err)
             print(traceback.format_exc())
             raise err
+        client.loop()
 
     devices_names_config = DevicesNamesConfig()
     if devices_names_config.is_devices_file_empty():
