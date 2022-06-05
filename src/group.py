@@ -3,7 +3,6 @@ import json
 from statistics import median
 
 import dali.gear.general as gear
-from slugify import slugify
 
 from .config import Config
 from .consts import *
@@ -31,7 +30,7 @@ class Group:
         self.max_level = max(x.max_level for x in self.lamps)
 
         self.friendly_name = DevicesNamesConfig().get_friendly_name(f"DALI Group {self.address}")
-        self.device_name = slugify(self.friendly_name)
+        self.device_name = f"group_{self.address}"
 
         self.mqtt.publish(
             HA_DISCOVERY_PREFIX_LIGHT.format(self.config[CONF_HA_DISCOVERY_PREFIX], self.config[CONF_MQTT_BASE_TOPIC],
@@ -53,7 +52,7 @@ class Group:
         logger.info(f"   - short address: {self.address}, actual brightness level: {self.level}")
 
     def __repr__(self):
-        return f"GROUP A{self.address}"
+        return f"GROUP {self.address}"
 
     __str__ = __repr__
 
@@ -86,7 +85,7 @@ class Group:
         """Generate a automatic configuration for Home Assistant."""
         json_config = {
             "name": self.friendly_name,
-            "unique_id": "DALI2MQTT_GROUP_{}".format(self.device_name),
+            "unique_id": f"{self.config[CONF_MQTT_BASE_TOPIC]}_{self.device_name}",
             "state_topic": MQTT_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
             "command_topic": MQTT_COMMAND_TOPIC.format(
                 self.config[CONF_MQTT_BASE_TOPIC], self.device_name
@@ -144,4 +143,4 @@ class Group:
         if level != 0:
             level = denormalize(level, 0, 255, self.min_levels, self.max_level)
         self.driver.send(gear.DAPC(self.dali_group, level))
-        logger.debug(f"Set group {self.friendly_name} brightness level to {self.level} ({level})")
+        logger.info(f"Set group {self.friendly_name} brightness level to {self.level} ({level})")

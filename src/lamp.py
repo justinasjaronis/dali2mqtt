@@ -3,7 +3,6 @@ import json
 from pprint import pprint
 
 import dali.gear.general as gear
-from slugify import slugify
 
 from .config import Config
 from .consts import *
@@ -40,7 +39,7 @@ class Lamp:
         self.max_level = self.driver.send(gear.QueryMaxLevel(self.dali_lamp)).value
 
         self.friendly_name = DevicesNamesConfig().get_friendly_name(f"DALI Lamp {self.address}")
-        self.device_name = slugify(self.friendly_name)
+        self.device_name = f"lamp_{self.address}"
 
         self._getLevelDALI()
 
@@ -80,7 +79,7 @@ class Lamp:
         """Generate a automatic configuration for Home Assistant."""
         json_config = {
             "name": self.friendly_name,
-            "unique_id": "DALI2MQTT_LAMP_{}".format(self.device_name),
+            "unique_id": f"{self.config[CONF_MQTT_BASE_TOPIC]}_{self.device_name}",
             "state_topic": MQTT_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
             "command_topic": MQTT_COMMAND_TOPIC.format(
                 self.config[CONF_MQTT_BASE_TOPIC], self.device_name
@@ -166,11 +165,11 @@ class Lamp:
     def _sendLevelDALI(self, level):
         level = denormalize(level, 0, 255, self.min_levels, self.max_level)
         self.driver.send(gear.DAPC(self.dali_lamp, level))
-        logger.debug(f"Set lamp {self.friendly_name} brightness level to {self.level} ({level})")
+        logger.info(f"Set lamp {self.friendly_name} brightness level to {self.level} ({level})")
 
     def _sendSceneDALI(self, scene):
         self.driver.send(gear.GoToScene(self.dali_lamp, scene))
-        logger.debug(f"Call scene {scene} on lamp {self.friendly_name}")
+        logger.info(f"Call scene {scene} on lamp {self.friendly_name}")
 
     def _getLevelDALI(self):
         level = self.driver.send(gear.QueryActualLevel(self.dali_lamp)).value
