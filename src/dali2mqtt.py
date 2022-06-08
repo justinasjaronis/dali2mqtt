@@ -153,7 +153,33 @@ def on_message_brightness_cmd(mqtt_client, data_object, msg):
         except DALIError as err:
             logger.error(f"Failed to set {light.device_name} to OFF: {err}")
     else:
-        logger.error(f"Invalid payload for {type} {light}")
+        logger.error(f"Invalid payload for {light}: {level}")
+
+
+def on_message_scene_cmd(mqtt_client, data_object, msg):
+    """Callback on MQTT scene command message."""
+    logger.debug("Scene Command on %s: %s", msg.topic, msg.payload)
+    light = msg.topic.split("/")[1]
+    light = get_light_object(data_object, light)
+    if light is None:
+        return
+    scene = msg.payload.decode("utf-8")
+    if scene == "-":
+        light.resetSceneMQTT()
+        return
+    if scene.startswith("Scene ") and len(scene.split(" ")) == 2:
+        scene = scene.split(" ")
+        if len(scene) == 2 and scene[1].isdigit() and 0 <= int(scene[1]) <= 15:
+            scene = int(scene[1])
+            try:
+                light.setScene(scene)
+                logger.debug(f"Set {light.device_name} to Scene {scene}")
+            except DALIError as err:
+                logger.error(f"Failed to set {light.device_name} to Scene {scene}: {err}")
+        else:
+            logger.error(f"Invalid payload for {light}: {scene}")
+    else:
+        logger.error(f"Invalid payload for {light}: {scene}")
 
 
 def get_light_object(data_object, light):
@@ -211,6 +237,7 @@ def on_connect(client, data_object, flags, result):  # pylint: disable=W0613,R09
         [
             (MQTT_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"), 0),
             (MQTT_BRIGHTNESS_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"), 0),
+            (MQTT_SCENE_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"), 0),
             (MQTT_SCAN_LAMPS_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC]), 0),
             (MQTT_POLL_LAMPS_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC]), 0),
         ]
@@ -281,6 +308,10 @@ def create_mqtt_client(driver_object):
     mqttc.message_callback_add(
         MQTT_BRIGHTNESS_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"),
         on_message_brightness_cmd,
+    )
+    mqttc.message_callback_add(
+        MQTT_SCENE_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"),
+        on_message_scene_cmd,
     )
     mqttc.message_callback_add(
         MQTT_SCAN_LAMPS_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC]),

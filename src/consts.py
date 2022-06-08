@@ -91,6 +91,7 @@ MQTT_STATE_TOPIC = "{}/{}/status"
 MQTT_COMMAND_TOPIC = "{}/{}/set"
 MQTT_BRIGHTNESS_STATE_TOPIC = "{}/{}/brightness/status"
 MQTT_BRIGHTNESS_COMMAND_TOPIC = "{}/{}/brightness/set"
+MQTT_SCENE_STATE_TOPIC = "{}/{}/scene/status"
 MQTT_SCENE_COMMAND_TOPIC = "{}/{}/scene/set"
 MQTT_SCAN_LAMPS_COMMAND_TOPIC = "{}/scan"
 MQTT_POLL_LAMPS_COMMAND_TOPIC = "{}/poll"
@@ -100,6 +101,7 @@ MQTT_AVAILABLE = "online"
 MQTT_NOT_AVAILABLE = "offline"
 
 HA_DISCOVERY_PREFIX_LIGHT = "{}/light/{}/{}/config"
+HA_DISCOVERY_PREFIX_SELECT = "{}/select/{}/{}/config"
 HA_DISCOVERY_PREFIX_BUTTON = "{}/button/{}/{}/config"
 
 BUTTONS = [

@@ -1,6 +1,5 @@
 """Class to represent dali lamps"""
 import json
-from pprint import pprint
 
 import dali.gear.general as gear
 
@@ -24,12 +23,16 @@ class Lamp:
         self.dali_lamp = dali_lamp
         self.address = dali_lamp.address
 
+        self.friendly_name = DevicesNamesConfig().get_friendly_name(f"DALI Lamp {self.address}")
+        self.device_name = f"lamp_{self.address}"
+
+        self.current_scene = None
         _scenes = []
         for i in range(0, 16):
             v = driver.send(gear.QuerySceneLevel(self.dali_lamp, i)).value
             _scenes.append(v)
         self.scenes = _scenes
-        logger.debug(self.scenes)
+        logger.debug(f"Scenes: {json.dumps(self.scenes)}")
 
         self.groups = []
 
@@ -38,16 +41,9 @@ class Lamp:
         self.min_levels = max(self.min_physical_level, self.min_level)
         self.max_level = self.driver.send(gear.QueryMaxLevel(self.dali_lamp)).value
 
-        self.friendly_name = DevicesNamesConfig().get_friendly_name(f"DALI Lamp {self.address}")
-        self.device_name = f"lamp_{self.address}"
-
         self._getLevelDALI()
+        self._register_discovery()
 
-        self.mqtt.publish(
-            HA_DISCOVERY_PREFIX_LIGHT.format(self.config[CONF_HA_DISCOVERY_PREFIX], self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
-            self.gen_ha_config(),
-            retain=True,
-        )
         self.mqtt.publish(
             MQTT_BRIGHTNESS_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
             self.level,
@@ -75,8 +71,7 @@ class Lamp:
     def addGroup(self, group):
         self.groups.append(group)
 
-    def gen_ha_config(self):
-        """Generate a automatic configuration for Home Assistant."""
+    def _register_discovery(self):
         json_config = {
             "name": self.friendly_name,
             "unique_id": f"{self.config[CONF_MQTT_BASE_TOPIC]}_{self.device_name}",
@@ -105,7 +100,42 @@ class Lamp:
                 "connections": [("DALI", f"A{self.address}")]
             },
         }
-        return json.dumps(json_config)
+        self.mqtt.publish(
+            HA_DISCOVERY_PREFIX_LIGHT.format(self.config[CONF_HA_DISCOVERY_PREFIX], self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
+            json.dumps(json_config),
+            retain=True,
+        )
+
+        json_config = {
+            "name": self.friendly_name + " Scene",
+            "unique_id": f"{self.config[CONF_MQTT_BASE_TOPIC]}_{self.device_name}_scene",
+            "state_topic": MQTT_SCENE_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
+            "command_topic": MQTT_SCENE_COMMAND_TOPIC.format(
+                self.config[CONF_MQTT_BASE_TOPIC], self.device_name
+            ),
+            "options": [],
+            "availability_topic": MQTT_DALI2MQTT_STATUS.format(self.config[CONF_MQTT_BASE_TOPIC]),
+            "payload_available": MQTT_AVAILABLE,
+            "payload_not_available": MQTT_NOT_AVAILABLE,
+            "device": {
+                "identifiers": f"{self.config[CONF_MQTT_BASE_TOPIC]}_A{self.address}",
+                "via_device": self.config[CONF_MQTT_BASE_TOPIC],
+                "name": f"DALI Lamp {self.address}",
+                "sw_version": f"dali2mqtt {VERSION}",
+                "manufacturer": AUTHOR,
+                "connections": [("DALI", f"A{self.address}")]
+            },
+        }
+        json_config["options"].append("-")
+        for index, scene in enumerate(self.scenes):
+            if str(scene).upper() != "MASK":
+                json_config["options"].append(f"Scene {index}")
+
+        self.mqtt.publish(
+            HA_DISCOVERY_PREFIX_SELECT.format(self.config[CONF_HA_DISCOVERY_PREFIX], self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
+            json.dumps(json_config),
+            retain=True,
+        )
 
     def setLevel(self, level, dali=True):
         if self.level == level:
@@ -119,20 +149,28 @@ class Lamp:
             self._sendLevelDALI(level)
 
         self._sendLevelMQTT(level, old)
+        self.resetSceneMQTT()
 
-    def setLevelScene(self, scene, dali=True):
-        if scene in self.scenes and self.scenes[scene] != "MASK":
+    def setScene(self, scene, dali=True):
+        if 0 <= scene <= 15 and self.scenes[scene] != "MASK":
             level = self.scenes[scene]
-            old = self.level
-            self.level = level
-            if dali:
-                for _x in self.groups:
-                    _x.recalc_level()
-                self._sendSceneDALI(scene)
 
-            if self.level == level:
-                return
-            self._sendLevelMQTT(level, old)
+            self.mqtt.publish(
+                MQTT_SCENE_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name), f"Scene {scene}",
+                retain=True)
+            self.current_scene = scene
+
+            if self.level != level:
+                old = self.level
+                self.level = level
+
+                if dali:
+                    for _x in self.groups:
+                        _x.recalc_level()
+                    self._sendSceneDALI(scene)
+
+                self._sendLevelMQTT(level, old)
+
 
     def _sendLevelMQTT(self, level, old_level):
         self.mqtt.publish(
@@ -146,6 +184,11 @@ class Lamp:
                 MQTT_PAYLOAD_ON if level > 0 else MQTT_PAYLOAD_OFF,
                 retain=True,
             )
+
+    def resetSceneMQTT(self):
+        if self.current_scene is not None:
+            self.mqtt.publish(
+                MQTT_SCENE_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name), "-", retain=True)
 
     def pollLevel(self):
         old = self.level
@@ -165,11 +208,11 @@ class Lamp:
     def _sendLevelDALI(self, level):
         level = denormalize(level, 0, 255, self.min_levels, self.max_level)
         self.driver.send(gear.DAPC(self.dali_lamp, level))
-        logger.info(f"Set lamp {self.friendly_name} brightness level to {self.level} ({level})")
+        logger.info(f"Set {self.friendly_name} brightness level to {self.level} ({level})")
 
     def _sendSceneDALI(self, scene):
         self.driver.send(gear.GoToScene(self.dali_lamp, scene))
-        logger.info(f"Call scene {scene} on lamp {self.friendly_name}")
+        logger.info(f"Call scene {scene} on {self.friendly_name}")
 
     def _getLevelDALI(self):
         level = self.driver.send(gear.QueryActualLevel(self.dali_lamp)).value
@@ -177,4 +220,4 @@ class Lamp:
             self.level = 0
         else:
             self.level = denormalize(level, self.min_levels, self.max_level, 0, 255)
-        logger.debug(f"Get lamp {self.friendly_name} brightness level {self.level} ({level})")
+        logger.debug(f"Get {self.friendly_name} brightness level {self.level} ({level})")

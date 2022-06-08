@@ -25,19 +25,21 @@ class Group:
         self.address = dali_group.group
         self.lamps = lamps
 
-        self.level = round(median(x.level for x in self.lamps))
-        self.min_levels = min(x.min_levels for x in self.lamps)
-        self.max_level = max(x.max_level for x in self.lamps)
-
         self.friendly_name = DevicesNamesConfig().get_friendly_name(f"DALI Group {self.address}")
         self.device_name = f"group_{self.address}"
 
-        self.mqtt.publish(
-            HA_DISCOVERY_PREFIX_LIGHT.format(self.config[CONF_HA_DISCOVERY_PREFIX], self.config[CONF_MQTT_BASE_TOPIC],
-                                       self.device_name),
-            self.gen_ha_config(),
-            retain=True,
-        )
+        self.level = None
+        self.recalc_level()
+        self.min_levels = min(x.min_levels for x in self.lamps)
+        self.max_level = max(x.max_level for x in self.lamps)
+
+        self.current_scene = None
+        self.scenes = set()
+        for x in self.lamps:
+            self.scenes.update([y for y in range(len(x.scenes)) if x.scenes[y] != "MASK"])
+
+        self._register_discovery()
+
         self.mqtt.publish(
             MQTT_BRIGHTNESS_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
             self.level,
@@ -81,7 +83,7 @@ class Group:
                     retain=True,
                 )
 
-    def gen_ha_config(self):
+    def _register_discovery(self):
         """Generate a automatic configuration for Home Assistant."""
         json_config = {
             "name": self.friendly_name,
@@ -111,7 +113,43 @@ class Group:
                 "connections": [("DALI", f"G{self.address}")]
             },
         }
-        return json.dumps(json_config)
+        self.mqtt.publish(
+            HA_DISCOVERY_PREFIX_LIGHT.format(self.config[CONF_HA_DISCOVERY_PREFIX], self.config[CONF_MQTT_BASE_TOPIC],
+                                             self.device_name),
+            json.dumps(json_config),
+            retain=True,
+        )
+
+        json_config = {
+            "name": self.friendly_name + " Scene",
+            "unique_id": f"{self.config[CONF_MQTT_BASE_TOPIC]}_{self.device_name}_scene",
+            "state_topic": MQTT_SCENE_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
+            "command_topic": MQTT_SCENE_COMMAND_TOPIC.format(
+                self.config[CONF_MQTT_BASE_TOPIC], self.device_name
+            ),
+            "options": [],
+            "availability_topic": MQTT_DALI2MQTT_STATUS.format(self.config[CONF_MQTT_BASE_TOPIC]),
+            "payload_available": MQTT_AVAILABLE,
+            "payload_not_available": MQTT_NOT_AVAILABLE,
+            "device": {
+                "identifiers": f"{self.config[CONF_MQTT_BASE_TOPIC]}_G{self.address}",
+                "via_device": self.config[CONF_MQTT_BASE_TOPIC],
+                "name": f"DALI Group {self.address}",
+                "sw_version": f"dali2mqtt {VERSION}",
+                "manufacturer": AUTHOR,
+                "connections": [("DALI", f"A{self.address}")]
+            },
+        }
+        json_config["options"].append("-")
+        for scene in self.scenes:
+            json_config["options"].append(f"Scene {scene}")
+
+        self.mqtt.publish(
+            HA_DISCOVERY_PREFIX_SELECT.format(self.config[CONF_HA_DISCOVERY_PREFIX], self.config[CONF_MQTT_BASE_TOPIC],
+                                              self.device_name),
+            json.dumps(json_config),
+            retain=True,
+        )
 
     def setLevel(self, level):
         old = self.level
@@ -126,6 +164,29 @@ class Group:
         for _x in affected_groups:
             _x.recalc_level()
 
+        self._sendLevelMQTT(level, old)
+        self.resetSceneMQTT()
+
+    def setScene(self, scene):
+        if 0 <= scene <= 15 and scene in self.scenes:
+            old = self.level
+            self._sendSceneDALI(scene)
+            self.mqtt.publish(
+                MQTT_SCENE_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name), f"Scene {scene}",
+                retain=True)
+            self.current_scene = scene
+
+            affected_groups = set()
+            for lamp in self.lamps:
+                lamp.setScene(scene, False)
+                affected_groups.update(lamp.groups)
+                
+            for _x in affected_groups:
+                _x.recalc_level()
+
+            self._sendLevelMQTT(self.level, old)
+
+    def _sendLevelMQTT(self, level, old):
         self.mqtt.publish(
             MQTT_BRIGHTNESS_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
             self.level,
@@ -138,9 +199,17 @@ class Group:
                 retain=True,
             )
 
+    def resetSceneMQTT(self):
+        if self.current_scene is not None:
+            self.mqtt.publish(
+                MQTT_SCENE_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name), "-", retain=True)
 
     def _sendLevelDALI(self, level):
         if level != 0:
             level = denormalize(level, 0, 255, self.min_levels, self.max_level)
         self.driver.send(gear.DAPC(self.dali_group, level))
-        logger.info(f"Set group {self.friendly_name} brightness level to {self.level} ({level})")
+        logger.info(f"Set {self.friendly_name} brightness level to {self.level} ({level})")
+
+    def _sendSceneDALI(self, scene):
+        self.driver.send(gear.GoToScene(self.dali_group, scene))
+        logger.info(f"Call scene {scene} on {self.friendly_name}")
