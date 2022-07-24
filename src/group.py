@@ -1,5 +1,6 @@
 """Class to represent dali groups"""
 import json
+import math
 from statistics import median
 
 import dali.gear.general as gear
@@ -61,12 +62,14 @@ class Group:
 
     def recalc_level(self):
         old = self.level
-        if self.config[CONF_GROUP_MODE] == "median":
-            self.level = round(median(x.level for x in self.lamps))
+        if self.config[CONF_GROUP_MODE] == "median_min":
+            self.level = math.ceil(max(median(x.level for x in self.lamps), min(x.level for x in self.lamps)))
+        elif self.config[CONF_GROUP_MODE] == "median":
+            self.level = math.ceil(median(x.level for x in self.lamps))
         elif self.config[CONF_GROUP_MODE] == "max":
-            self.level = round(max(x.level for x in self.lamps))
+            self.level = math.ceil(max(x.level for x in self.lamps))
         elif self.config[CONF_GROUP_MODE] == "min":
-            self.level = round(min(x.level for x in self.lamps))
+            self.level = math.ceil(min(x.level for x in self.lamps))
         elif self.config[CONF_GROUP_MODE] == "off":
             return
         else:
