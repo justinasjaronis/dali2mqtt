@@ -43,6 +43,7 @@ class Lamp:
 
         self._getLevelDALI()
         self._register_discovery()
+        self._setSceneToNoneMQTT()
 
         self.mqtt.publish(
             MQTT_BRIGHTNESS_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
@@ -149,9 +150,9 @@ class Lamp:
             self._sendLevelDALI(level)
 
         self._sendLevelMQTT(level, old)
-        self.resetSceneMQTT()
 
-    def setScene(self, scene, dali=True):
+    def setScene(self, scene):
+        self._setSceneToNoneMQTT()
         if 0 <= scene <= 15 and self.scenes[scene] != "MASK":
             level = self.scenes[scene]
 
@@ -164,10 +165,9 @@ class Lamp:
                 old = self.level
                 self.level = level
 
-                if dali:
-                    for _x in self.groups:
-                        _x.recalc_level()
-                    self._sendSceneDALI(scene)
+                for _x in self.groups:
+                    _x.recalc_level()
+                self._sendSceneDALI(scene)
 
                 self._sendLevelMQTT(level, old)
 
@@ -185,10 +185,9 @@ class Lamp:
                 retain=True,
             )
 
-    def resetSceneMQTT(self):
-        if self.current_scene is not None:
-            self.mqtt.publish(
-                MQTT_SCENE_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name), "-", retain=True)
+    def _setSceneToNoneMQTT(self):
+        self.mqtt.publish(
+            MQTT_SCENE_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name), "-", retain=True)
 
     def pollLevel(self):
         old = self.level
