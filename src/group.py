@@ -8,7 +8,7 @@ from .config import Config
 from .consts import *
 
 from .devicesnamesconfig import DevicesNamesConfig
-from .functions import denormalize
+from .functions import normalize
 
 logging.basicConfig(format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
@@ -205,7 +205,7 @@ class Group:
 
     def _sendLevelDALI(self, level):
         if level != 0:
-            level = denormalize(level, 0, 255, self.min_levels, self.max_level)
+            level = normalize(level, 0, 255, self.min_levels, self.max_level)
         self.driver.send(gear.DAPC(self.dali_group, level))
         logger.info(f"Set {self.friendly_name} brightness level to {self.level} ({level})")
 

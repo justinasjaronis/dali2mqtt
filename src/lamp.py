@@ -7,7 +7,7 @@ from .config import Config
 from .consts import *
 
 from .devicesnamesconfig import DevicesNamesConfig
-from .functions import denormalize
+from .functions import normalize
 
 logging.basicConfig(format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
@@ -205,7 +205,7 @@ class Lamp:
             )
 
     def _sendLevelDALI(self, level):
-        level = denormalize(level, 0, 255, self.min_levels, self.max_level)
+        level = normalize(level, 0, 255, self.min_levels, self.max_level)
         self.driver.send(gear.DAPC(self.dali_lamp, level))
         logger.info(f"Set {self.friendly_name} brightness level to {self.level} ({level})")
 
@@ -218,5 +218,5 @@ class Lamp:
         if level == 0:
             self.level = 0
         else:
-            self.level = denormalize(level, self.min_levels, self.max_level, 0, 255)
+            self.level = normalize(level, self.min_levels, self.max_level, 0, 255)
         logger.debug(f"Get {self.friendly_name} brightness level {self.level} ({level})")
