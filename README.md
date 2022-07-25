@@ -55,7 +55,7 @@ Then just edit the file accordingly. You can also create the file with the right
                         Log level
   --log-color           Coloring output
   
-  --group-mode {mean_on,mean,max,min,off}
+  --group-mode {mean,max,min,off}
                         How the light level of a group is set when the level some lamps of the is changed   
 
 ```
