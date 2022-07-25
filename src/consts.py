@@ -38,7 +38,7 @@ DEFAULT_DALI_LAMPS = 64
 DEFAULT_HA_DISCOVERY_PREFIX = "homeassistant"
 DEFAULT_LOG_LEVEL = "info"
 DEFAULT_LOG_COLOR = False
-DEFAULT_GROUP_MODE = "median_min"
+DEFAULT_GROUP_MODE = "mean_on"
 
 ALL_SUPPORTED_LOG_LEVELS = {
     "critical": logging.CRITICAL,
@@ -48,7 +48,7 @@ ALL_SUPPORTED_LOG_LEVELS = {
     "debug": logging.DEBUG,
 }
 
-ALL_SUPPORTED_GROUP_MODES = ["median_min", "median", "max", "min", "off"]
+ALL_SUPPORTED_GROUP_MODES = ["mean_on", "mean", "max", "min", "off"]
 
 RESET_COLOR = "\x1b[0m"
 RED_COLOR = "\x1b[31;21m"
