@@ -62,9 +62,7 @@ class Group:
 
     def recalc_level(self):
         old = self.level
-        if self.config[CONF_GROUP_MODE] == "mean_on":
-            self.level = math.ceil(max(mean(x.level for x in self.lamps), 1))
-        elif self.config[CONF_GROUP_MODE] == "mean":
+        if self.config[CONF_GROUP_MODE] == "mean":
             self.level = math.ceil(mean(x.level for x in self.lamps))
         elif self.config[CONF_GROUP_MODE] == "max":
             self.level = math.ceil(max(x.level for x in self.lamps))
