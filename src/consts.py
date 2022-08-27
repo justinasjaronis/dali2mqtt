@@ -89,6 +89,7 @@ CONF_SCHEMA = vol.Schema(
 MQTT_DALI2MQTT_STATUS = "{}/status"
 MQTT_STATE_TOPIC = "{}/{}/status"
 MQTT_COMMAND_TOPIC = "{}/{}/set"
+MQTT_FLASH_TOPIC = "{}/{}/flash"
 MQTT_BRIGHTNESS_STATE_TOPIC = "{}/{}/brightness/status"
 MQTT_BRIGHTNESS_COMMAND_TOPIC = "{}/{}/brightness/set"
 MQTT_SCENE_STATE_TOPIC = "{}/{}/scene/status"
