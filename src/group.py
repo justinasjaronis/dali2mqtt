@@ -40,7 +40,7 @@ class Group:
             self.scenes.update([y for y in range(len(x.scenes)) if x.scenes[y] != "MASK"])
 
         self._register_discovery()
-        self._setSceneToNoneMQTT()
+        self.setSceneToNoneMQTT()
 
         self.mqtt.publish(
             MQTT_BRIGHTNESS_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
@@ -169,7 +169,7 @@ class Group:
         self._sendLevelMQTT(level, old)
 
     def setScene(self, scene):
-        self._setSceneToNoneMQTT()
+        self.setSceneToNoneMQTT()
         if 0 <= scene <= 15 and scene in self.scenes:
             old = self.level
             self._sendSceneDALI(scene)
@@ -200,7 +200,7 @@ class Group:
                 retain=True,
             )
 
-    def _setSceneToNoneMQTT(self):
+    def setSceneToNoneMQTT(self):
         self.mqtt.publish(
             MQTT_SCENE_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name), "-", retain=True)
 

@@ -165,6 +165,7 @@ def on_message_scene_cmd(mqtt_client, data_object, msg):
         return
     scene = msg.payload.decode("utf-8")
     if scene == "-":
+        light.setSceneToNoneMQTT()
         return
     if scene.startswith("Scene ") and len(scene.split(" ")) == 2:
         scene = scene.split(" ")
