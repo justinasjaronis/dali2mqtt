@@ -1,6 +1,7 @@
 """Class to represent dali groups"""
 import json
 import math
+import time
 from statistics import mean
 
 import dali.gear.general as gear
@@ -181,7 +182,7 @@ class Group:
             affected_groups = set()
             for lamp in self.lamps:
                 affected_groups.update(lamp.groups)
-                
+
             for _x in affected_groups:
                 _x.recalc_level()
 
@@ -213,3 +214,11 @@ class Group:
     def _sendSceneDALI(self, scene):
         self.driver.send(gear.GoToScene(self.dali_group, scene))
         logger.info(f"Call scene {scene} on {self.friendly_name}")
+
+    def flash(self, count, speed):
+        for n in range(count):
+            self.driver.send(gear.RecallMaxLevel(self.dali_group))
+            time.sleep(speed)
+            self.driver.send(gear.RecallMinLevel(self.dali_group))
+            time.sleep(speed)
+        self._sendLevelDALI(self.level)

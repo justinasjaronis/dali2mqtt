@@ -121,6 +121,28 @@ def initialize_lamps(data_object, client):
     logger.info("initializing lamps finished")
 
 
+
+def get_light_object(data_object, light):
+    try:
+        _x = light.split("_")
+        type = _x[0]
+        light = int(_x[1])
+    except (KeyError, ValueError):
+        logger.error(f"Invalid topic {light}")
+        return
+
+    try:
+        if type == "lamp":
+            return data_object["all_lamps"][light]
+        elif type == "group":
+            return data_object["all_groups"][light]
+        else:
+            logger.error(f"{type} {light} invalid type")
+    except KeyError:
+        logger.error(f"Light {type} {light} doesn't exists")
+    return None
+
+
 def on_message_cmd(mqtt_client, data_object, msg):
     """Callback on MQTT command message."""
     logger.debug("Command on %s: %s", msg.topic, msg.payload)
@@ -134,6 +156,26 @@ def on_message_cmd(mqtt_client, data_object, msg):
             logger.debug(f"Set {light.device_name} to OFF")
         except DALIError as err:
             logger.error(f"Failed to set {light.device_name} to OFF: {err}")
+
+
+def on_message_flash(mqtt_client, data_object, msg):
+    """Callback on MQTT flash message."""
+    logger.debug("Flash on %s: %s", msg.topic, msg.payload)
+    light = msg.topic.split("/")[1]
+    light = get_light_object(data_object, light)
+    if light is None:
+        return
+    try:
+        data = json.loads(msg.payload)
+    except ValueError:
+        logger.warning(f"Failed to parse payload for flash on light: {light.device_name}")
+        return
+
+    try:
+        light.flash(data["count"], data["speed"])
+    except KeyError:
+        logger.warning(f"Failed to get need parameters from payload {data} for flash on light: {light.device_name}")
+        return
 
 
 def on_message_brightness_cmd(mqtt_client, data_object, msg):
@@ -182,27 +224,6 @@ def on_message_scene_cmd(mqtt_client, data_object, msg):
         logger.error(f"Invalid payload for {light}: {scene}")
 
 
-def get_light_object(data_object, light):
-    try:
-        _x = light.split("_")
-        type = _x[0]
-        light = int(_x[1])
-    except (KeyError, ValueError):
-        logger.error(f"Invalid topic {light}")
-        return
-
-    try:
-        if type == "lamp":
-            return data_object["all_lamps"][light]
-        elif type == "group":
-            return data_object["all_groups"][light]
-        else:
-            logger.error(f"{type} {light} invalid type")
-    except KeyError:
-        logger.error(f"Light {type} {light} doesn't exists")
-    return None
-
-
 def on_message_reinitialize_lamps_cmd(mqtt_client, data_object, msg):
     """Callback on MQTT scan lamps command message"""
     logger.debug("Reinitialize Command on %s", msg.topic)
@@ -236,6 +257,7 @@ def on_connect(client, data_object, flags, result):  # pylint: disable=W0613,R09
     client.subscribe(
         [
             (MQTT_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"), 0),
+            (MQTT_FLASH_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"), 0),
             (MQTT_BRIGHTNESS_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"), 0),
             (MQTT_SCENE_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"), 0),
             (MQTT_SCAN_LAMPS_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC]), 0),
@@ -304,6 +326,9 @@ def create_mqtt_client(driver_object):
     # Add message callbacks that will only trigger on a specific subscription match.
     mqttc.message_callback_add(
         MQTT_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"), on_message_cmd
+    )
+    mqttc.message_callback_add(
+        MQTT_FLASH_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"), on_message_flash
     )
     mqttc.message_callback_add(
         MQTT_BRIGHTNESS_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"),

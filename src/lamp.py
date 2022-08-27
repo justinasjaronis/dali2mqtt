@@ -1,5 +1,6 @@
 """Class to represent dali lamps"""
 import json
+import time
 
 import dali.gear.general as gear
 
@@ -220,3 +221,11 @@ class Lamp:
         else:
             self.level = normalize(level, self.min_levels, self.max_level, 0, 255)
         logger.debug(f"Get {self.friendly_name} brightness level {self.level} ({level})")
+
+    def flash(self, count, speed):
+        for n in range(count):
+            self.driver.send(gear.RecallMaxLevel(self.dali_lamp))
+            time.sleep(speed)
+            self.driver.send(gear.RecallMinLevel(self.dali_lamp))
+            time.sleep(speed)
+        self._sendLevelDALI(self.level)
