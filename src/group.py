@@ -216,6 +216,7 @@ class Group:
         logger.info(f"Call scene {scene} on {self.friendly_name}")
 
     def flash(self, count, speed):
+        logger.info(f"Flash group {self.friendly_name}: Count: {count}, Speed {speed}")
         for n in range(count):
             self.driver.send(gear.RecallMaxLevel(self.dali_group))
             time.sleep(speed)

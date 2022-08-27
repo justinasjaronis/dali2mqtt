@@ -223,6 +223,7 @@ class Lamp:
         logger.debug(f"Get {self.friendly_name} brightness level {self.level} ({level})")
 
     def flash(self, count, speed):
+        logger.info(f"Flash lamp {self.friendly_name}: Count: {count}, Speed {speed}")
         for n in range(count):
             self.driver.send(gear.RecallMaxLevel(self.dali_lamp))
             time.sleep(speed)
