@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Bridge between a DALI controller and an MQTT bus."""
 import json
-import re
 import traceback
 
 import paho.mqtt.client as mqtt
@@ -17,8 +16,10 @@ from .lamp import Lamp
 from .devicesnamesconfig import DevicesNamesConfig
 
 from .consts import *
+
 logging.basicConfig(format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
+
 
 def scan_lamps(driver):
     """Scan a maximum number of dali devices."""
@@ -32,7 +33,7 @@ def scan_lamps(driver):
                 lamps.append(lamp)
                 logger.debug("Found lamp at address %d", lamp)
                 if len(lamps) >= config[CONF_DALI_LAMPS]:
-                    logger.warning("All %s configured lamps have been found, Stopping scan",  config[CONF_DALI_LAMPS])
+                    logger.warning("All %s configured lamps have been found, Stopping scan", config[CONF_DALI_LAMPS])
                     logger.info("Found %d lamps", len(lamps))
                     return lamps
         except DALIError as err:
@@ -40,6 +41,7 @@ def scan_lamps(driver):
 
     logger.info("Found %d lamps", len(lamps))
     return lamps
+
 
 def scan_groups(dali_driver, lamps):
     logger.info("Scanning for groups:")
@@ -53,31 +55,31 @@ def scan_groups(dali_driver, lamps):
             lamp_groups = []
 
             for i in range(8):
-                checkgroup = 1<<i
+                checkgroup = 1 << i
                 logger.debug("Check pattern: %d", checkgroup)
                 if (group1 & checkgroup) == checkgroup:
                     if not i in groups:
-                      groups[i]=[]
+                        groups[i] = []
                     groups[i].append(lamp)
                     lamp_groups.append(i)
                 if (group2 & checkgroup) != 0:
-                    if not i+8 in groups:
-                      groups[i+8]=[]
-                    groups[i+8].append(lamp)
-                    lamp_groups.append(i+8)
-            
-            logger.debug("Lamp %d is in groups %s",lamp, lamp_groups)
-            
+                    if not i + 8 in groups:
+                        groups[i + 8] = []
+                    groups[i + 8].append(lamp)
+                    lamp_groups.append(i + 8)
+
+            logger.debug("Lamp %d is in groups %s", lamp, lamp_groups)
+
         except Exception as e:
             logger.warning("Can't get groups for lamp %s: %s", lamp, e)
     logger.info("Finished scanning for groups")
     return groups
 
+
 def initialize_lamps(data_object, client):
     logger.info("initializing lamps...")
     driver_object = data_object["driver"]
     lamps = scan_lamps(driver_object)
-
     logger.info("Getting lamp parameters:")
     for lamp in lamps:
         try:
@@ -109,7 +111,8 @@ def initialize_lamps(data_object, client):
 
     devices_names_config = DevicesNamesConfig()
     if devices_names_config.is_devices_file_empty():
-        devices_names_config.save_devices_names_file(list(data_object["all_lamps"].values()) + list(data_object["all_groups"].values()))
+        devices_names_config.save_devices_names_file(
+            list(data_object["all_lamps"].values()) + list(data_object["all_groups"].values()))
 
     config = Config()
     client.publish(
@@ -117,30 +120,87 @@ def initialize_lamps(data_object, client):
     )
     logger.info("initializing lamps finished")
 
+
 def on_message_cmd(mqtt_client, data_object, msg):
     """Callback on MQTT command message."""
     logger.debug("Command on %s: %s", msg.topic, msg.payload)
-    config = Config()
-    rex = re.search(MQTT_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "(.+?)-(.+?)"), msg.topic)
-    type = rex.group(1)
-    light = int(rex.group(2))
-    if type not in ["lamp", "group"]:
-        logger.error(f"Received invalid type: {type}")
+    light = msg.topic.split("/")[1]
+    light = get_light_object(data_object, light)
+    if light is None:
         return
-
     if msg.payload == MQTT_PAYLOAD_OFF:
         try:
-            if type == "lamp":
-                obj = data_object["all_lamps"][light]
-            else:
-                obj = data_object["all_groups"][light]
+            light.setLevel(0)
+            logger.debug(f"Set {light.device_name} to OFF")
+        except DALIError as err:
+            logger.error(f"Failed to set {light.device_name} to OFF: {err}")
+
+
+def on_message_brightness_cmd(mqtt_client, data_object, msg):
+    """Callback on MQTT brightness command message."""
+    logger.debug("Brightness Command on %s: %s", msg.topic, msg.payload)
+    light = msg.topic.split("/")[1]
+    light = get_light_object(data_object, light)
+    if light is None:
+        return
+    level = msg.payload.decode("utf-8")
+
+    if level.isdigit() and 0 <= int(level) < 256:
+        level = int(level)
+        try:
+            light.setLevel(level)
+            logger.debug(f"Set {light.device_name} to {level}")
+        except DALIError as err:
+            logger.error(f"Failed to set {light.device_name} to OFF: {err}")
+    else:
+        logger.error(f"Invalid payload for {light}: {level}")
+
+
+def on_message_scene_cmd(mqtt_client, data_object, msg):
+    """Callback on MQTT scene command message."""
+    logger.debug("Scene Command on %s: %s", msg.topic, msg.payload)
+    light = msg.topic.split("/")[1]
+    light = get_light_object(data_object, light)
+    if light is None:
+        return
+    scene = msg.payload.decode("utf-8")
+    if scene == "-":
+        light.setSceneToNoneMQTT()
+        return
+    if scene.startswith("Scene ") and len(scene.split(" ")) == 2:
+        scene = scene.split(" ")
+        if len(scene) == 2 and scene[1].isdigit() and 0 <= int(scene[1]) <= 15:
+            scene = int(scene[1])
             try:
-                obj.setLevel(0)
-                logger.debug(f"Set {obj.device_name} to OFF")
+                light.setScene(scene)
+                logger.debug(f"Set {light.device_name} to Scene {scene}")
             except DALIError as err:
-                logger.error(f"Failed to set {obj.device_name} to OFF: {err}")
-        except KeyError:
-            logger.error(f"{type} {light} doesn't exists")
+                logger.error(f"Failed to set {light.device_name} to Scene {scene}: {err}")
+        else:
+            logger.error(f"Invalid payload for {light}: {scene}")
+    else:
+        logger.error(f"Invalid payload for {light}: {scene}")
+
+
+def get_light_object(data_object, light):
+    try:
+        _x = light.split("_")
+        type = _x[0]
+        light = int(_x[1])
+    except (KeyError, ValueError):
+        logger.error(f"Invalid topic {light}")
+        return
+
+    try:
+        if type == "lamp":
+            return data_object["all_lamps"][light]
+        elif type == "group":
+            return data_object["all_groups"][light]
+        else:
+            logger.error(f"{type} {light} invalid type")
+    except KeyError:
+        logger.error(f"Light {type} {light} doesn't exists")
+    return None
 
 
 def on_message_reinitialize_lamps_cmd(mqtt_client, data_object, msg):
@@ -153,6 +213,7 @@ def on_message_reinitialize_lamps_cmd(mqtt_client, data_object, msg):
     )
     initialize_lamps(data_object, mqtt_client)
 
+
 def on_message_poll_lamps_cmd(mqtt_client, data_object, msg):
     """Callback on MQTT poll lamps command message"""
     logger.debug("Poll lamps command on %s", msg.topic)
@@ -163,49 +224,6 @@ def on_message_poll_lamps_cmd(mqtt_client, data_object, msg):
         _x.recalc_level()
     logger.info("Polling lamps finished")
 
-def get_lamp_object(data_object,light):
-    if 'group_' in light:
-        """ Check if the comand is for a dali group """
-        group = int(re.search('group_(\d+)', light).group(1))
-        lamp_object=data_object["all_lamps"][group]
-    else:
-        """ The command is for a single lamp """
-        if light not in data_object["all_lamps"]:
-            raise KeyError
-        lamp_object = data_object["all_lamps"][light]
-    return lamp_object
-
-
-def on_message_brightness_cmd(mqtt_client, data_object, msg):
-    """Callback on MQTT brightness command message."""
-    logger.debug("Brightness Command on %s: %s", msg.topic, msg.payload)
-
-    config = Config()
-    rex = re.search(MQTT_BRIGHTNESS_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "(.+?)-(.+?)"), msg.topic)
-    type = rex.group(1)
-    light = int(rex.group(2))
-    level = msg.payload.decode("utf-8")
-
-    if type not in ["lamp", "group"]:
-        logger.error(f"Received invalid type: {type}")
-        return
-
-    if level.isdigit() and 0 <= int(level) < 256:
-        level = int(level)
-        try:
-            if type == "lamp":
-                obj = data_object["all_lamps"][light]
-            else:
-                obj = data_object["all_groups"][light]
-            try:
-                obj.setLevel(level)
-                logger.debug(f"Set {obj.device_name} to {level}")
-            except DALIError as err:
-                logger.error(f"Failed to set {obj.device_name} to OFF: {err}")
-        except KeyError:
-            logger.error(f"{type} {light} doesn't exists")
-    else:
-        logger.error(f"Invalid payload for {type} {light}")
 
 def on_message(mqtt_client, data_object, msg):  # pylint: disable=W0613
     """Default callback on MQTT message."""
@@ -219,6 +237,7 @@ def on_connect(client, data_object, flags, result):  # pylint: disable=W0613,R09
         [
             (MQTT_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"), 0),
             (MQTT_BRIGHTNESS_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"), 0),
+            (MQTT_SCENE_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"), 0),
             (MQTT_SCAN_LAMPS_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC]), 0),
             (MQTT_POLL_LAMPS_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC]), 0),
         ]
@@ -229,13 +248,14 @@ def on_connect(client, data_object, flags, result):  # pylint: disable=W0613,R09
     initialize_lamps(data_object, client)
     register_bridge(client)
 
+
 def register_bridge(client):
     logger.info("registering buttons")
     config = Config()
     for button in BUTTONS:
         json_config = {
             "name": button['name'],
-            "unique_id": "DALI2MQTT_BUTTON_{}".format(slugify(button['name'])),
+            "unique_id": "{}_BUTTON_{}".format(config[CONF_MQTT_BASE_TOPIC], slugify(button['name'])),
             "command_topic": button['command_topic'].format(
                 config[CONF_MQTT_BASE_TOPIC]
             ),
@@ -256,10 +276,12 @@ def register_bridge(client):
 
         logger.debug(f"Register button {button['name']}")
         client.publish(
-            HA_DISCOVERY_PREFIX_BUTTON.format(config[CONF_HA_DISCOVERY_PREFIX], config[CONF_MQTT_BASE_TOPIC], slugify(button['name'])),
+            HA_DISCOVERY_PREFIX_BUTTON.format(config[CONF_HA_DISCOVERY_PREFIX], config[CONF_MQTT_BASE_TOPIC],
+                                              slugify(button['name'])),
             json.dumps(json_config),
             retain=True,
         )
+
 
 def create_mqtt_client(driver_object):
     """Create MQTT client object, setup callbacks and connection to server."""
@@ -288,6 +310,10 @@ def create_mqtt_client(driver_object):
         on_message_brightness_cmd,
     )
     mqttc.message_callback_add(
+        MQTT_SCENE_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"),
+        on_message_scene_cmd,
+    )
+    mqttc.message_callback_add(
         MQTT_SCAN_LAMPS_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC]),
         on_message_reinitialize_lamps_cmd,
     )
@@ -301,8 +327,9 @@ def create_mqtt_client(driver_object):
     if config[CONF_MQTT_USERNAME] != '':
         mqttc.username_pw_set(config[CONF_MQTT_USERNAME], config[CONF_MQTT_PASSWORD])
 
-    mqttc.connect(config[CONF_MQTT_SERVER], config[CONF_MQTT_PORT], 60)
+    mqttc.connect(config[CONF_MQTT_SERVER], config[CONF_MQTT_PORT], 180)
     return mqttc
+
 
 def main(args):
     config = Config()

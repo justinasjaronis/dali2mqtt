@@ -38,7 +38,7 @@ DEFAULT_DALI_LAMPS = 64
 DEFAULT_HA_DISCOVERY_PREFIX = "homeassistant"
 DEFAULT_LOG_LEVEL = "info"
 DEFAULT_LOG_COLOR = False
-DEFAULT_GROUP_MODE = "median"
+DEFAULT_GROUP_MODE = "mean"
 
 ALL_SUPPORTED_LOG_LEVELS = {
     "critical": logging.CRITICAL,
@@ -48,7 +48,7 @@ ALL_SUPPORTED_LOG_LEVELS = {
     "debug": logging.DEBUG,
 }
 
-ALL_SUPPORTED_GROUP_MODES = ["median", "max", "min", "off"]
+ALL_SUPPORTED_GROUP_MODES = ["mean", "max", "min", "off"]
 
 RESET_COLOR = "\x1b[0m"
 RED_COLOR = "\x1b[31;21m"
@@ -91,6 +91,8 @@ MQTT_STATE_TOPIC = "{}/{}/status"
 MQTT_COMMAND_TOPIC = "{}/{}/set"
 MQTT_BRIGHTNESS_STATE_TOPIC = "{}/{}/brightness/status"
 MQTT_BRIGHTNESS_COMMAND_TOPIC = "{}/{}/brightness/set"
+MQTT_SCENE_STATE_TOPIC = "{}/{}/scene/status"
+MQTT_SCENE_COMMAND_TOPIC = "{}/{}/scene/set"
 MQTT_SCAN_LAMPS_COMMAND_TOPIC = "{}/scan"
 MQTT_POLL_LAMPS_COMMAND_TOPIC = "{}/poll"
 MQTT_PAYLOAD_ON = b"ON"
@@ -99,6 +101,7 @@ MQTT_AVAILABLE = "online"
 MQTT_NOT_AVAILABLE = "offline"
 
 HA_DISCOVERY_PREFIX_LIGHT = "{}/light/{}/{}/config"
+HA_DISCOVERY_PREFIX_SELECT = "{}/select/{}/{}/config"
 HA_DISCOVERY_PREFIX_BUTTON = "{}/button/{}/{}/config"
 
 BUTTONS = [
