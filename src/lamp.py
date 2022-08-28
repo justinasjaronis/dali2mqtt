@@ -152,7 +152,7 @@ class Lamp:
 
         self._sendLevelMQTT(level, old)
 
-    def setScene(self, scene):
+    def setScene(self, scene, dali=True):
         self.setSceneToNoneMQTT()
         if 0 <= scene <= 15 and self.scenes[scene] != "MASK":
             level = self.scenes[scene]
@@ -165,13 +165,12 @@ class Lamp:
             if self.level != level:
                 old = self.level
                 self.level = level
-
-                for _x in self.groups:
-                    _x.recalc_level()
-                self._sendSceneDALI(scene)
+                if dali:
+                    for _x in self.groups:
+                        _x.recalc_level()
+                    self._sendSceneDALI(scene)
 
                 self._sendLevelMQTT(level, old)
-
 
     def _sendLevelMQTT(self, level, old_level):
         self.mqtt.publish(

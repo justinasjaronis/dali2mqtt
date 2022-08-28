@@ -181,6 +181,7 @@ class Group:
 
             affected_groups = set()
             for lamp in self.lamps:
+                lamp.setScene(scene, False)
                 affected_groups.update(lamp.groups)
 
             for _x in affected_groups:
