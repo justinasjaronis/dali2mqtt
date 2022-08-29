@@ -228,4 +228,8 @@ class Lamp:
             time.sleep(speed)
             self.driver.send(gear.RecallMinLevel(self.dali_lamp))
             time.sleep(speed)
+
+        if self.level >= 127:
+            self.driver.send(gear.RecallMaxLevel(self.dali_lamp))
+
         self._sendLevelDALI(self.level)

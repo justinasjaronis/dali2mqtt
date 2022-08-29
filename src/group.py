@@ -223,4 +223,8 @@ class Group:
             time.sleep(speed)
             self.driver.send(gear.RecallMinLevel(self.dali_group))
             time.sleep(speed)
+
+        if self.level >= 127:
+            self.driver.send(gear.RecallMaxLevel(self.dali_group))
+
         self._sendLevelDALI(self.level)
