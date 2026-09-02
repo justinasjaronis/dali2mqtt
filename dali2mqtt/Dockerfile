@@ -12,11 +12,13 @@ RUN apt-get update \
         python3-venv \
         python3-dev \
         build-essential \
+        pkg-config \
         git \
         libhidapi-hidraw0 \
         libhidapi-dev \
         libusb-1.0-0 \
         libusb-1.0-0-dev \
+        libudev-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Isolated virtualenv (Debian bookworm is PEP-668 externally managed)
