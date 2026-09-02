@@ -1,0 +1,55 @@
+---
+name: DALI2MQTT
+version: "1.0.0"
+slug: dali2mqtt
+description: >-
+  DALI <-> MQTT bridge with Home Assistant MQTT discovery for DALI lighting
+  controllers (hasseb, Tridonic, daliserver).
+url: https://github.com/justinasjaronis/dali2mqtt
+arch:
+  - aarch64
+  - amd64
+  - armv7
+  - armhf
+  - i386
+init: false
+startup: services
+boot: auto
+services:
+  - mqtt:want
+homeassistant_api: true
+usb: true
+udev: true
+map:
+  - addon_config:rw
+options:
+  dali_driver: tridonic
+  dali_device: "/dev/dali/daliusb-*"
+  dali_lamps: 64
+  dali_server_host: localhost
+  dali_server_port: 55825
+  mqtt_base_topic: dali2mqtt
+  ha_discovery_prefix: homeassistant
+  group_mode: mean
+  log_level: info
+  log_color: false
+  switch_map: []
+schema:
+  dali_driver: "list(hasseb|tridonic|dali_server)"
+  dali_device: "str?"
+  dali_lamps: "int(1,64)"
+  dali_server_host: "str?"
+  dali_server_port: "port?"
+  mqtt_base_topic: "str"
+  ha_discovery_prefix: "str"
+  group_mode: "list(mean|max|min|off)"
+  log_level: "list(critical|error|warning|info|debug)"
+  log_color: "bool"
+  mqtt_host: "str?"
+  mqtt_port: "port?"
+  mqtt_username: "str?"
+  mqtt_password: "password?"
+  switch_map:
+    - address: "int(0,63)"
+      entities:
+        - "str"

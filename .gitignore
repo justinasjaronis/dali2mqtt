@@ -120,3 +120,6 @@ dali2mqtt/data/
 devices.yaml
 # standalone app config (never commit credentials)
 dali2mqtt.yaml
+
+# Add-on manifest must be tracked (overrides the generic config.yaml ignore above)
+!dali2mqtt/config.yaml
