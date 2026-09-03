@@ -529,7 +529,14 @@ def print_command_and_response(data_object, dev, command, response, config_comma
             and isinstance(command, (SetFadeTime, Off))
             and mirror.is_mapped(addr)
         ):
-            mirror.toggle_address(addr)
+            # toggle_address makes blocking HTTP calls to Home Assistant; run it
+            # in a thread so it never stalls the asyncio event loop.
+            try:
+                asyncio.get_event_loop().run_in_executor(
+                    None, mirror.toggle_address, addr
+                )
+            except RuntimeError:
+                mirror.toggle_address(addr)
     except Exception as err:
         logger.error("Error processing DALI bus command: %s", err)
 

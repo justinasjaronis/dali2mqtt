@@ -8,12 +8,17 @@ in the source tree.
 """
 import json
 import logging
+import os
 from difflib import SequenceMatcher
 
 from requests import get, post
 from requests.exceptions import RequestException, Timeout
 
 logger = logging.getLogger(__name__)
+
+# Home Assistant Supervisor proxy: reachable from any add-on with
+# homeassistant_api: true, authenticated with the injected SUPERVISOR_TOKEN.
+SUPERVISOR_CORE_URL = "http://supervisor/core"
 
 # Timeout (seconds) for HA requests
 TIMEOUT = 10
@@ -35,10 +40,23 @@ class HomeAssistantClient:
 
     @classmethod
     def from_config(cls, base_url, token, verify_ssl=False):
-        """Build a client, returning None when not configured."""
-        if not base_url or not token:
-            return None
-        return cls(base_url, token, verify_ssl)
+        """Build a client.
+
+        If an explicit base_url + token are given, use them. Otherwise fall back
+        to the Supervisor proxy (``http://supervisor/core`` + ``SUPERVISOR_TOKEN``),
+        available to any add-on with ``homeassistant_api: true`` — so no host or
+        long-lived token needs to be configured.
+        """
+        if base_url and token:
+            return cls(base_url, token, verify_ssl)
+        supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
+        if supervisor_token:
+            logger.info("Home Assistant mirror using Supervisor proxy")
+            return cls(SUPERVISOR_CORE_URL, supervisor_token, verify_ssl=False)
+        logger.warning(
+            "Home Assistant mirror not configured and SUPERVISOR_TOKEN missing"
+        )
+        return None
 
     def _get_state(self):
         req = get(

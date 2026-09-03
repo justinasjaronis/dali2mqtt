@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.2
+
+- HA entity mirror (physical DALI switch -> HA entity toggle) now works out of
+  the box via the Supervisor proxy (no host/token needed) and runs its HTTP
+  calls off the event loop. Configure via the `switch_map` add-on option.
+
 ## 1.6.0
 
 - **Bus events to MQTT**: the bridge now publishes observed external DALI bus
