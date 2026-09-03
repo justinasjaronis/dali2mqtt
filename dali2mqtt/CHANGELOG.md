@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1
+
+- Config UI: pause the bridge's bus-traffic read-back queue during config
+  operations (scan/commission/etc.) to avoid a DALI re-read storm that made
+  scanning extremely slow.
+
 ## 1.2.0
 
 - New: built-in **DALI Config** web UI (a small DALI-cockpit), served in the

@@ -8,6 +8,7 @@ safely interleave. Long, disruptive operations (commissioning) run through
 duration.
 """
 import asyncio
+import contextlib
 import logging
 
 import dali.address as address
@@ -36,20 +37,35 @@ def _val(resp):
 
 
 class DaliConfig:
-    def __init__(self, driver):
+    def __init__(self, driver, busy=None):
         self.driver = driver
         # Serialises multi-command config operations against each other.
         self._lock = asyncio.Lock()
+        # Optional asyncio.Event the bridge watches to pause its bus traffic
+        # while a config operation is running (prevents a re-read storm).
+        self._busy = busy
 
     async def _ready(self):
         await self.driver.connected.wait()
+
+    @contextlib.asynccontextmanager
+    async def _guard(self):
+        """Own the bus for one operation: pause the bridge, serialise access."""
+        async with self._guard():
+            if self._busy is not None:
+                self._busy.set()
+            try:
+                yield
+            finally:
+                if self._busy is not None:
+                    self._busy.clear()
 
     # ------------------------------------------------------------------ scan
     async def scan_gear(self, addresses=range(64)):
         """Scan control gear and return a list of dicts describing each one."""
         await self._ready()
         result = []
-        async with self._lock:
+        async with self._guard():
             for a in addresses:
                 short = address.Short(a)
                 try:
@@ -102,7 +118,7 @@ class DaliConfig:
         """Blink a control gear so it can be located physically."""
         await self._ready()
         short = address.Short(addr)
-        async with self._lock:
+        async with self._guard():
             original = _val(await self._q(gear.QueryActualLevel(short)))
             for _ in range(count):
                 await self.driver.send(gear.RecallMaxLevel(short))
@@ -115,14 +131,14 @@ class DaliConfig:
 
     async def set_level(self, addr, level):
         await self._ready()
-        async with self._lock:
+        async with self._guard():
             await self.driver.send(gear.DAPC(address.Short(addr), int(level)))
         return {"ok": True}
 
     async def _set_via_dtr(self, addr, value, command_cls):
         await self._ready()
         short = address.Short(addr)
-        async with self._lock:
+        async with self._guard():
             await self.driver.send(gear.DTR0(int(value)))
             await self.driver.send(command_cls(short))
         return {"ok": True}
@@ -147,13 +163,13 @@ class DaliConfig:
 
     async def add_to_group(self, addr, group):
         await self._ready()
-        async with self._lock:
+        async with self._guard():
             await self.driver.send(gear.AddToGroup(address.Short(addr), int(group)))
         return {"ok": True}
 
     async def remove_from_group(self, addr, group):
         await self._ready()
-        async with self._lock:
+        async with self._guard():
             await self.driver.send(
                 gear.RemoveFromGroup(address.Short(addr), int(group))
             )
@@ -163,7 +179,7 @@ class DaliConfig:
         await self._ready()
         short = address.Short(addr)
         scenes = {}
-        async with self._lock:
+        async with self._guard():
             for s in range(16):
                 v = _val(await self._q(gear.QuerySceneLevel(short, s)))
                 if v is not None and str(v).upper() != "MASK":
@@ -173,14 +189,14 @@ class DaliConfig:
     async def set_scene(self, addr, scene, level):
         await self._ready()
         short = address.Short(addr)
-        async with self._lock:
+        async with self._guard():
             await self.driver.send(gear.DTR0(int(level)))
             await self.driver.send(gear.SetScene(short, int(scene)))
         return {"ok": True}
 
     async def clear_scene(self, addr, scene):
         await self._ready()
-        async with self._lock:
+        async with self._guard():
             await self.driver.send(
                 gear.RemoveFromScene(address.Short(addr), int(scene))
             )
@@ -191,7 +207,7 @@ class DaliConfig:
         await self._ready()
         if not (0 <= int(new) <= 63):
             raise ValueError("new address out of range")
-        async with self._lock:
+        async with self._guard():
             # DTR0 = (new << 1) | 1, then SET SHORT ADDRESS (config, sent twice)
             await self.driver.send(gear.DTR0((int(new) << 1) | 1))
             await self.driver.send(gear.SetShortAddress(address.Short(int(old))))
@@ -211,7 +227,7 @@ class DaliConfig:
             if progress_cb:
                 progress_cb(p)
 
-        async with self._lock:
+        async with self._guard():
             await self.driver.run_sequence(
                 Commissioning(readdress=readdress), progress=_prog
             )

@@ -30,6 +30,11 @@ logger = logging.getLogger(__name__)
 # Shared runtime references so the config web UI can refresh MQTT discovery.
 _runtime = {}
 
+# Set while the config web UI performs bus operations (scan/commission/etc.).
+# While set, the bridge ignores bus traffic and pauses its read-back queue so
+# config operations don't trigger a feedback storm of re-reads on the bus.
+config_busy = asyncio.Event()
+
 
 async def reinit_discovery():
     """Re-scan the DALI bus and refresh Home Assistant MQTT discovery."""
@@ -366,6 +371,9 @@ async def process_queue(client, data_object):
         logger.debug("Got item from update queue: %s", item)
         # Give the lamp time to settle on its final state before reading it back.
         await asyncio.sleep(2)
+        if config_busy.is_set():
+            # A config operation owns the bus; drop this queued read-back.
+            continue
         try:
             if item in data_object["all_lamps"]:
                 await data_object["all_lamps"][item].read_current_state()
@@ -433,6 +441,9 @@ async def create_mqtt_client(driver_object, mirror):
 
 def print_command_and_response(data_object, dev, command, response, config_command_error):
     """Sync callback to process messages coming from the DALI bus."""
+    if config_busy.is_set():
+        # The config web UI owns the bus; ignore its traffic to avoid a storm.
+        return
     try:
         if config_command_error:
             logger.error("Failed config command: %s", command)
@@ -574,7 +585,7 @@ def main(args):
     try:
         from .webserver import DaliWebServer
 
-        web = DaliWebServer(dali_driver, config, reinit=reinit_discovery, port=8099)
+        web = DaliWebServer(dali_driver, config, reinit=reinit_discovery, busy=config_busy, port=8099)
         asyncio.ensure_future(web.start())
     except Exception as err:  # noqa: BLE001
         logger.error("Config web UI not started: %s", err)

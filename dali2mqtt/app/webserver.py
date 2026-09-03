@@ -21,8 +21,8 @@ def _json(data, status=200):
 
 
 class DaliWebServer:
-    def __init__(self, driver, config, reinit=None, port=8099):
-        self.cfg = DaliConfig(driver)
+    def __init__(self, driver, config, reinit=None, busy=None, port=8099):
+        self.cfg = DaliConfig(driver, busy=busy)
         self.config = config
         self.reinit = reinit  # async callable to refresh MQTT discovery
         self.port = port
