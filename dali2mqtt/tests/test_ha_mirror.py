@@ -50,3 +50,27 @@ def test_disabled_when_no_map():
     assert not m.enabled
     m.toggle_address(20)          # must be a no-op
     assert m._client.calls == []
+
+
+def test_set_all_off_calls_turn_off():
+    m = make_mirror({10: ["sport room"], 20: ["dining"]})
+    m.set_all("off")
+    services = [c[1] for c in m._client.calls]
+    assert services == ["turn_off", "turn_off"]
+
+
+def test_set_all_on_calls_turn_on():
+    m = make_mirror({20: ["dining"]})
+    m.set_all("on")
+    assert m._client.calls[0][1] == "turn_on"
+
+
+def test_all_entities_dedup():
+    m = make_mirror({8: ["radviles"], 13: ["radviles"], 20: ["dining"]})
+    assert m.all_entities() == ["radviles", "dining"]
+
+
+def test_set_all_ignores_bad_action():
+    m = make_mirror({20: ["dining"]})
+    m.set_all("dim")
+    assert m._client.calls == []

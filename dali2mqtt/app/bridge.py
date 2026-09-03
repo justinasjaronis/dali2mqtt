@@ -520,10 +520,32 @@ def print_command_and_response(data_object, dev, command, response, config_comma
         logger.debug("Received command %s", command)
         # Surface external bus activity (button/switch presses) to HA via MQTT.
         publish_bus_event(command, response)
+        mirror = data_object.get("mirror")
         if isinstance(command.destination, (address.Group, address.Broadcast)):
             # Broadcast/group command: re-read every known lamp.
             for addr in data_object["all_lamps"]:
                 data_object["queue"].put_nowait(addr)
+            # Mirror a whole-house broadcast all-off / all-on (e.g. a bedside
+            # "everything off" switch) onto the mapped Home Assistant entities.
+            if isinstance(command.destination, address.Broadcast) and (
+                mirror is not None and mirror.enabled
+            ):
+                action = None
+                if isinstance(command, Off) or (
+                    isinstance(command, gear.DAPC) and command.power == 0
+                ):
+                    action = "off"
+                elif isinstance(command, gear.RecallMaxLevel) or (
+                    isinstance(command, gear.DAPC) and command.power > 0
+                ):
+                    action = "on"
+                if action:
+                    try:
+                        asyncio.get_event_loop().run_in_executor(
+                            None, mirror.set_all, action
+                        )
+                    except RuntimeError:
+                        mirror.set_all(action)
             return
 
         addr = command.destination.address
@@ -542,7 +564,6 @@ def print_command_and_response(data_object, dev, command, response, config_comma
         ):
             data_object["queue"].put_nowait(addr)
 
-        mirror = data_object.get("mirror")
         if (
             mirror is not None
             and isinstance(command, (SetFadeTime, Off))

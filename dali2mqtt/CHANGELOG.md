@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.0
+
+- New: a DALI **broadcast all-off / all-on** (e.g. a bedside "everything off"
+  switch) now also switches the mapped Home Assistant entities in `switch_map`
+  (turn_off / turn_on). Previously only DALI lamps reacted to a broadcast.
+
 ## 1.7.1
 
 - Added a unit/module **test suite** (58 tests, pytest) covering DALI config

@@ -230,6 +230,18 @@ Entities are matched by fuzzy name across `group`, `light`, `fan`, `switch`,
 3. Save and let the add-on restart. The mapping is stored in the add-on options
    and **persists across restarts**.
 
+### Whole-house broadcast (all-off / all-on)
+
+A DALI **broadcast** command that turns everything off (or on) — e.g. a bedside
+"everything off" switch — also switches **all** entities listed anywhere in
+`switch_map`:
+
+* broadcast `Off` or `DAPC 0` &rarr; every mapped entity is turned **off**;
+* broadcast `RecallMaxLevel` or `DAPC > 0` &rarr; every mapped entity is turned **on**.
+
+This is what makes non-DALI lights (e.g. eWeLink/Sonoff) follow a master
+off/on switch alongside the DALI lamps.
+
 ### Testing remotely (no physical access)
 
 You can trigger the mirror for a mapped address without pressing the switch, via

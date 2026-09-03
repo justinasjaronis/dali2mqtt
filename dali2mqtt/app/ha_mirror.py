@@ -35,14 +35,35 @@ class HAEntityMirror:
     def is_mapped(self, address):
         return address in self._switch_map
 
+    def all_entities(self):
+        """Every unique Home Assistant entity across the whole switch map."""
+        seen = []
+        for entities in self._switch_map.values():
+            for entity in entities:
+                if entity not in seen:
+                    seen.append(entity)
+        return seen
+
     def toggle_address(self, address):
         """Toggle every Home Assistant entity mapped to a DALI address."""
         if not self.enabled:
             return
         for entity in self._switch_map.get(address, []):
-            self._toggle_entity(entity)
+            self._call_entity(entity, "toggle")
 
-    def _toggle_entity(self, entity):
+    def set_all(self, action):
+        """Set every mapped entity to a fixed state (`on`/`off`).
+
+        Used to mirror a DALI **broadcast** all-off / all-on (e.g. a bedside
+        "everything off" switch) onto the mapped Home Assistant entities.
+        """
+        if not self.enabled or action not in ("on", "off"):
+            return
+        service = f"turn_{action}"
+        for entity in self.all_entities():
+            self._call_entity(entity, service)
+
+    def _call_entity(self, entity, service):
         try:
             if not self._client.connected():
                 return
@@ -51,8 +72,8 @@ class HAEntityMirror:
                 logger.warning("No Home Assistant entity matched '%s'", entity)
                 return
             self._client.execute_service(
-                "homeassistant", "toggle", {"entity_id": ha_entity["id"]}
+                "homeassistant", service, {"entity_id": ha_entity["id"]}
             )
-            logger.info("Toggled Home Assistant entity %s", ha_entity["id"])
+            logger.info("%s Home Assistant entity %s", service, ha_entity["id"])
         except Exception as err:  # noqa: BLE001 - never let mirroring break the bridge
-            logger.error("Failed to toggle entity '%s': %s", entity, err)
+            logger.error("Failed to %s entity '%s': %s", service, entity, err)
