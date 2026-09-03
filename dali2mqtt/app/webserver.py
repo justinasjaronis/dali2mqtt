@@ -47,6 +47,7 @@ class DaliWebServer:
         app.router.add_get("/api/device/{addr}", self.api_device_info)
         app.router.add_post("/api/device/{addr}/identify", self.api_device_identify)
         app.router.add_post("/api/device/{addr}/address", self.api_device_address)
+        app.router.add_get("/api/monitor", self.api_monitor)
         app.router.add_static("/static/", STATIC_DIR)
         return app
 
@@ -168,3 +169,12 @@ class DaliWebServer:
         except ValueError as err:
             return _json({"error": str(err)}, 400)
         return _json(res)
+
+    async def api_monitor(self, request):
+        try:
+            since = int(request.query.get("since", "0"))
+        except ValueError:
+            since = 0
+        events = self.cfg.monitor_events(since)
+        last = events[-1]["seq"] if events else since
+        return _json({"events": events, "last": last})

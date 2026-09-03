@@ -10,6 +10,8 @@ duration.
 import asyncio
 import contextlib
 import logging
+import time
+from collections import deque
 
 import dali.address as address
 import dali.gear.general as gear
@@ -60,9 +62,43 @@ class DaliConfig:
         # Optional asyncio.Event the bridge watches to pause its bus traffic
         # while a config operation is running (prevents a re-read storm).
         self._busy = busy
+        # Bus monitor: a ring buffer of recent bus frames, for spotting what a
+        # (DALI-1) push-button transmits when pressed.
+        self._monitor = deque(maxlen=400)
+        self._mon_seq = 0
+        self._mon_registered = False
 
     async def _ready(self):
         await self.driver.connected.wait()
+
+    # ------------------------------------------------------------- bus monitor
+    def _ensure_monitor(self):
+        if not self._mon_registered:
+            try:
+                self.driver.bus_traffic.register(self._on_traffic)
+                self._mon_registered = True
+            except Exception as err:  # noqa: BLE001
+                logger.error("Could not register bus monitor: %s", err)
+
+    def _on_traffic(self, dev, command, response, config_command_error):
+        try:
+            self._mon_seq += 1
+            self._monitor.append(
+                {
+                    "seq": self._mon_seq,
+                    "t": time.strftime("%H:%M:%S"),
+                    "cmd": str(command) if command is not None else "",
+                    "resp": str(response) if response is not None else "",
+                    "err": bool(config_command_error),
+                }
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    def monitor_events(self, since=0):
+        """Return buffered bus frames newer than ``since`` (registers on first use)."""
+        self._ensure_monitor()
+        return [e for e in self._monitor if e["seq"] > since]
 
     @contextlib.asynccontextmanager
     async def _guard(self):

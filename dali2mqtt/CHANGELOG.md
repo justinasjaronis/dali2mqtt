@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0
+
+- Config UI: added a **Bus Monitor** — a live view of DALI bus traffic. DALI-1
+  switches/sensors have no address and cannot be scanned, but pressing one
+  broadcasts a command that now shows up here (scene/level/off + target group),
+  so you can identify and document what each physical button does.
+
 ## 1.3.0
 
 - Config UI: added DALI-2 **control device** (button/sensor) support — scan,

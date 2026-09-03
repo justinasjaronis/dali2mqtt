@@ -57,6 +57,7 @@
   <h1>⬤ DALI Config</h1>
   <button class="primary" id="btnScan" onclick="scan()">Scan bus</button>
   <button id="btnScanDev" onclick="scanDevices()" title="Scan DALI-2 control devices (buttons/sensors)">Scan devices</button>
+  <button id="btnMon" onclick="toggleMonitor()" title="Watch live bus traffic — press a button to see what it sends (finds DALI-1 switches)">🔎 Bus monitor</button>
   <button onclick="reinit()" title="Refresh Home Assistant MQTT entities">Refresh HA entities</button>
   <span style="flex:1"></span>
   <button onclick="commission(false)" title="Assign addresses to new/unaddressed gear">Commission (new)</button>
@@ -276,6 +277,48 @@ async function commission(readdress){
   catch(e){ toast("Commission failed: "+e.message); }
 }
 async function reinit(){ try{ await post("api/reinit"); toast("HA entities refreshed"); }catch(e){toast(e.message);} }
+
+// ---- Bus monitor (find DALI-1 switches by watching what they transmit) ----
+let monOn=false, monLast=0, monTimer=null, monLines=[];
+function toggleMonitor(){ monOn?stopMonitor():startMonitor(); }
+function startMonitor(){
+  monOn=true; monLines=[]; $("#btnMon").classList.add("primary"); $("#btnMon").textContent="⏹ Stop monitor";
+  SEL=null; SELDEV=null; renderList();
+  $("#detail").innerHTML=`
+    <div class="card">
+      <h2>Bus monitor <span class="muted" style="font-weight:400">— live DALI traffic</span></h2>
+      <div class="muted">Press a physical button/switch now. DALI-1 switches have no address and
+        can't be scanned — but you can see the command they broadcast here (e.g.
+        <code>GoToScene(GroupN, x)</code>, <code>RecallMaxLevel(GroupN)</code>, <code>Off(...)</code>).
+        Idle bridge polling also appears; watch for the new line when you press.</div>
+      <div class="cmds" style="margin:10px 0"><button onclick="clearMonitor()">Clear</button>
+        <span id="monStat" class="muted">listening…</span></div>
+      <pre id="monLog" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;max-height:60vh;overflow:auto;white-space:pre-wrap;font-size:12px;margin:0"></pre>
+    </div>`;
+  pollMonitor();
+  monTimer=setInterval(pollMonitor, 1000);
+}
+function stopMonitor(){
+  monOn=false; if(monTimer) clearInterval(monTimer); monTimer=null;
+  $("#btnMon").classList.remove("primary"); $("#btnMon").textContent="🔎 Bus monitor";
+  const s=$("#monStat"); if(s) s.textContent="stopped";
+}
+function clearMonitor(){ monLines=[]; const l=$("#monLog"); if(l) l.textContent=""; }
+async function pollMonitor(){
+  if(!monOn) return;
+  try{
+    const d=await api("api/monitor?since="+monLast);
+    monLast=d.last||monLast;
+    for(const e of (d.events||[])){
+      const line=`${e.t}  ${e.err?'⚠ ':''}${e.cmd}${e.resp?('   -> '+e.resp):''}`;
+      monLines.push(line);
+    }
+    if(monLines.length>500) monLines=monLines.slice(-500);
+    const log=$("#monLog");
+    if(log){ log.textContent=monLines.join("\n"); log.scrollTop=log.scrollHeight; }
+    const s=$("#monStat"); if(s) s.textContent=monLines.length+" frames";
+  }catch(e){ const s=$("#monStat"); if(s) s.textContent="error: "+e.message; }
+}
 
 // auto-scan on load
 scan();
