@@ -268,7 +268,7 @@ async function changeAddr(a){
   if(n===a) return;
   if(!confirm(`Change short address A${a} → A${n}?`)) return;
   try{ const r=await post(`api/gear/${a}/address`,{new:n});
-    toast("Address changed (verify "+r.verify+"). Rescanning…"); SEL=n; await scan();
+    toast("Address changed"+(r.verified?" (verified)":"")+". Rescanning…"); SEL=n; await scan();
   }catch(e){toast(e.message);}
 }
 async function commission(readdress){

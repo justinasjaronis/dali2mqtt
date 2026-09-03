@@ -67,3 +67,15 @@ Simon de Sio and contributors.
 Licensed under the **MIT License** — the same license as the upstream project,
 so there is no license conflict. All original copyright notices are retained in
 [LICENSE](LICENSE); see that file for the full text.
+
+## Development & tests
+
+```bash
+cd dali2mqtt
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest                      # 58 unit/module tests, no hardware required
+```
+
+Tests use a fake DALI driver (see `tests/conftest.py`); CI runs them on every
+push via `.github/workflows/tests.yml`.

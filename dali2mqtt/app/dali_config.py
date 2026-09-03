@@ -279,8 +279,14 @@ class DaliConfig:
             # DTR0 = (new << 1) | 1, then SET SHORT ADDRESS (config, sent twice)
             await self.driver.send(gear.DTR0((int(new) << 1) | 1))
             await self.driver.send(gear.SetShortAddress(address.Short(int(old))))
-            verify = await self._q(gear.QueryShortAddress(address.Short(int(new))))
-        return {"ok": True, "verify": _val(verify)}
+            # Verify the gear now answers at the new short address.
+            present = await self._q(
+                gear.QueryControlGearPresent(address.Short(int(new)))
+            )
+        verified = bool(
+            isinstance(present, YesNoResponse) and present.value
+        )
+        return {"ok": True, "verified": verified}
 
     async def commission(self, readdress=False, progress_cb=None):
         """Assign short addresses to control gear (DALI commissioning).

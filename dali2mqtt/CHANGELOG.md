@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.1
+
+- Added a unit/module **test suite** (58 tests, pytest) covering DALI config
+  operations, memory bank read/write, control devices, the HA client/mirror,
+  bus-event publishing and the web API. CI runs them on every push.
+- Fixed `change_address` verification (it used QueryShortAddress incorrectly and
+  raised TypeError); it now verifies via QueryControlGearPresent at the new
+  address and returns `verified`.
+
 ## 1.7.0
 
 - Config API: `POST /api/simulate_button/{addr}` triggers the HA mirror for a
