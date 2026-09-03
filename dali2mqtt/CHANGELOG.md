@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0
+
+- Upgraded python-dali 0.9 -> 0.11 (adds DALI-2 control device / push-button
+  support, and asyncio compatibility with Python 3.10+).
+- build_driver adapted to the 0.11 driver API (tridonic/hasseb no longer take
+  glob/loop kwargs).
+
 ## 1.0.0
 
 - Repackaged as an installable Home Assistant add-on.

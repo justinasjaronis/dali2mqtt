@@ -1,6 +1,6 @@
 ---
 name: DALI2MQTT
-version: "1.0.5"
+version: "1.1.0"
 slug: dali2mqtt
 description: >-
   DALI <-> MQTT bridge with Home Assistant MQTT discovery for DALI lighting

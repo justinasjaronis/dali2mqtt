@@ -479,31 +479,19 @@ def build_driver(config, event_loop):
     logger.debug("Using <%s> driver", driver_name)
 
     if driver_name == HASSEB:
-        from dali.driver.hasseb import SyncHassebDALIUSBDriver
+        # python-dali 0.11: async hasseb driver lives in dali.driver.hid
+        from dali.driver.hid import hasseb
 
-        driver = SyncHassebDALIUSBDriver()
-        try:
-            firmware_version = float(driver.readFirmwareVersion())
-        except AttributeError:
-            logger.error(
-                "Could not open device. Is the hasseb adapter connected "
-                "and does it have the right permissions?"
-            )
-            raise SetupError("hasseb adapter not available")
-        if firmware_version < MIN_HASSEB_FIRMWARE_VERSION:
-            logger.error(
-                "dali2mqtt requires the newest hasseb firmware "
-                "(see https://github.com/hasseb/python-dali)"
-            )
-            raise SetupError("hasseb firmware too old")
-        driver.disableSniffing()
-        return driver
+        device = config[CONF_DALI_DEVICE] or "/dev/dali/hasseb-*"
+        return hasseb(device)
 
     if driver_name == TRIDONIC:
         from dali.driver.hid import tridonic
 
+        # python-dali 0.11 dropped the glob/loop kwargs; pass the device path
+        # (a plain path or a glob such as /dev/hidraw0 or /dev/dali/daliusb-*).
         device = config[CONF_DALI_DEVICE] or "/dev/dali/daliusb-*"
-        return tridonic(device, glob=True, loop=event_loop)
+        return tridonic(device)
 
     if driver_name == DALI_SERVER:
         from dali.driver.daliserver import DaliServer
