@@ -264,7 +264,8 @@ class DaliConfig:
             for a in addresses:
                 short = address.DeviceShort(a)
                 status = await self._q(device.QueryDeviceStatus(short))
-                if status is None:
+                # No backward frame -> device absent (response.raw_value is None).
+                if status is None or getattr(status, "raw_value", None) is None:
                     continue
                 info = {"address": a}
                 info["status"] = _val(status)
