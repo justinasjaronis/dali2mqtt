@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0
+
+- Config UI: added DALI-2 **control device** (button/sensor) support — scan,
+  identify, read instances, and change short address. Requires python-dali
+  0.11. (Lunatone button-to-action mapping lives in proprietary device config
+  and is not exposed by the generic DALI-2 protocol.)
+
 ## 1.2.1
 
 - Config UI: pause the bridge's bus-traffic read-back queue during config

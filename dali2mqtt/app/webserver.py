@@ -42,6 +42,11 @@ class DaliWebServer:
         app.router.add_post("/api/gear/{addr}/scene", self.api_set_scene)
         app.router.add_post("/api/commission", self.api_commission)
         app.router.add_post("/api/reinit", self.api_reinit)
+        # Control devices (DALI-2 buttons/sensors)
+        app.router.add_get("/api/scan_devices", self.api_scan_devices)
+        app.router.add_get("/api/device/{addr}", self.api_device_info)
+        app.router.add_post("/api/device/{addr}/identify", self.api_device_identify)
+        app.router.add_post("/api/device/{addr}/address", self.api_device_address)
         app.router.add_static("/static/", STATIC_DIR)
         return app
 
@@ -138,3 +143,28 @@ class DaliWebServer:
         if self.reinit:
             await self.reinit()
         return _json({"ok": True})
+
+    # ------------------------------------------------- control device handlers
+    async def api_scan_devices(self, request):
+        try:
+            devices = await self.cfg.scan_devices()
+            return _json({"devices": devices, "supported": self.cfg.devices_supported()})
+        except Exception as err:  # noqa: BLE001
+            logger.exception("device scan failed")
+            return _json({"error": str(err)}, 500)
+
+    async def api_device_info(self, request):
+        return _json(await self.cfg.read_device(self._addr(request)))
+
+    async def api_device_identify(self, request):
+        return _json(await self.cfg.identify_device(self._addr(request)))
+
+    async def api_device_address(self, request):
+        body = await self._body(request)
+        try:
+            res = await self.cfg.change_device_address(
+                self._addr(request), int(body["new"])
+            )
+        except ValueError as err:
+            return _json({"error": str(err)}, 400)
+        return _json(res)

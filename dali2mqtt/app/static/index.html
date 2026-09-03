@@ -56,6 +56,7 @@
 <header>
   <h1>⬤ DALI Config</h1>
   <button class="primary" id="btnScan" onclick="scan()">Scan bus</button>
+  <button id="btnScanDev" onclick="scanDevices()" title="Scan DALI-2 control devices (buttons/sensors)">Scan devices</button>
   <button onclick="reinit()" title="Refresh Home Assistant MQTT entities">Refresh HA entities</button>
   <span style="flex:1"></span>
   <button onclick="commission(false)" title="Assign addresses to new/unaddressed gear">Commission (new)</button>
@@ -70,8 +71,10 @@
 
 <script>
 const $ = s => document.querySelector(s);
-let GEAR = [];        // scan results
-let SEL = null;       // selected address
+let GEAR = [];        // control gear scan results
+let DEVICES = [];     // control device (button/sensor) scan results
+let SEL = null;       // selected gear address
+let SELDEV = null;    // selected device address
 
 // Ingress-safe: use RELATIVE URLs so they resolve against the ingress base
 // path (HA serves the add-on at /api/hassio_ingress/<token>/ with a trailing
@@ -99,18 +102,84 @@ async function scan(){
 }
 
 function renderList(){
-  if(!GEAR.length){ $("#list").innerHTML='<div class="empty">No control gear found.</div>'; return; }
-  $("#list").innerHTML = GEAR.map(g=>`
+  let html = "";
+  if(!GEAR.length){ html += '<div class="empty">No control gear found.</div>'; }
+  else html += GEAR.map(g=>`
     <div class="row ${g.address===SEL?'sel':''}" onclick="select(${g.address})">
       <span class="a">A${g.address}</span>
       <span class="lvl">lvl ${g.level??'–'} · grp ${g.groups.length?g.groups.join(','):'–'}</span>
     </div>`).join("");
+  if(DEVICES.length){
+    html += '<div class="row" style="cursor:default;background:var(--chip);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Control devices</div>';
+    html += DEVICES.map(d=>`
+      <div class="row ${d.address===SELDEV?'sel':''}" onclick="selectDevice(${d.address})">
+        <span class="a">D${d.address}</span>
+        <span class="lvl">${d.instances??'?'} inst · mode ${d.operating_mode??'–'}</span>
+      </div>`).join("");
+  }
+  $("#list").innerHTML = html;
 }
 
 function gearOf(a){ return GEAR.find(g=>g.address===a); }
+function deviceOf(a){ return DEVICES.find(d=>d.address===a); }
+
+async function scanDevices(){
+  const b=$("#btnScanDev"); b.disabled=true; b.innerHTML='<span class="spin"></span> Scanning…';
+  try{
+    const d = await api("api/scan_devices");
+    if(!d.supported){ toast("Control devices need python-dali 0.11"); return; }
+    DEVICES = d.devices||[];
+    renderList();
+    toast("Found "+DEVICES.length+" control devices");
+  }catch(e){ toast("Device scan failed: "+e.message); }
+  finally{ b.disabled=false; b.textContent="Scan devices"; }
+}
+
+function selectDevice(a){
+  SELDEV=a; SEL=null; renderList();
+  const d=deviceOf(a); if(!d) return;
+  $("#detail").innerHTML=`
+    <div class="card">
+      <h2>Control device · short address D${a}</h2>
+      <div class="muted">Instances: ${d.instances??'?'} · Operating mode: ${d.operating_mode??'–'} · Status: ${d.status??'–'}</div>
+      <div class="cmds" style="margin-top:10px">
+        <button onclick="identifyDevice(${a})">🔦 Identify device</button>
+        <button onclick="loadDevice(${a})">Read instances</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Instances</h2>
+      <div id="devInstances" class="muted">Press “Read instances”.</div>
+    </div>
+    <div class="card">
+      <h2>Change short address</h2>
+      <div class="field"><label>New address (0–63)</label>
+        <input type="number" id="newDevAddr" min="0" max="63" value="${a}">
+        <button class="warn" onclick="changeDevAddr(${a})">Change</button></div>
+      <div class="muted">Button-to-scene mapping (e.g. “press → RECALL MAX to group 8”) is
+        stored in the device's Lunatone application config and is not exposed by the
+        generic DALI-2 protocol; this panel handles addressing, identify and instances.</div>
+    </div>`;
+}
+
+async function identifyDevice(a){ try{ await post(`api/device/${a}/identify`); toast("Identifying D"+a); }catch(e){toast(e.message);} }
+async function loadDevice(a){
+  $("#devInstances").innerHTML='<span class="spin"></span> Reading…';
+  try{ const info=await api(`api/device/${a}`);
+    const rows=(info.instances||[]).map(i=>`<div class="row" style="cursor:default"><span class="a">Instance ${i.instance}</span><span class="lvl">type ${i.type??'–'}</span></div>`).join("");
+    $("#devInstances").innerHTML = rows||'<span class="muted">No instances reported.</span>';
+  }catch(e){ $("#devInstances").textContent="Failed: "+e.message; }
+}
+async function changeDevAddr(a){
+  const n=+$("#newDevAddr").value;
+  if(n===a) return;
+  if(!confirm(`Change control device D${a} → D${n}?`)) return;
+  try{ await post(`api/device/${a}/address`,{new:n}); toast("Device address changed. Rescanning…"); SELDEV=n; await scanDevices(); }
+  catch(e){toast(e.message);}
+}
 
 function select(a){
-  SEL=a; renderList();
+  SEL=a; SELDEV=null; renderList();
   const g=gearOf(a); if(!g){ return; }
   const groupBoxes = Array.from({length:16},(_,i)=>`
     <label>${i}<input type="checkbox" ${g.groups.includes(i)?'checked':''} onchange="toggleGroup(${a},${i},this.checked)"></label>`).join("");

@@ -17,6 +17,16 @@ from dali.command import YesNoResponse
 from dali.exceptions import DALIError
 from dali.sequences import Commissioning
 
+try:
+    import dali.device.general as device
+    from dali.device import pushbutton as pb
+
+    _HAVE_DEVICE = True
+except ImportError:  # python-dali < 0.11
+    device = None
+    pb = None
+    _HAVE_DEVICE = False
+
 logger = logging.getLogger(__name__)
 
 BROADCAST = address.Broadcast()
@@ -236,4 +246,76 @@ class DaliConfig:
                 Commissioning(readdress=readdress), progress=_prog
             )
         logger.info("Commissioning finished (readdress=%s)", readdress)
+        return {"ok": True}
+
+    # ----------------------------------------------- control devices (DALI-2)
+    # Input devices such as push-button panels and sensors (e.g. Lunatone DALI
+    # Switch). Requires python-dali >= 0.11.
+    def devices_supported(self):
+        return _HAVE_DEVICE
+
+    async def scan_devices(self, addresses=range(64)):
+        """Scan DALI-2 control devices (buttons/sensors)."""
+        if not _HAVE_DEVICE:
+            return []
+        await self._ready()
+        result = []
+        async with self._guard():
+            for a in addresses:
+                short = address.DeviceShort(a)
+                status = await self._q(device.QueryDeviceStatus(short))
+                if status is None:
+                    continue
+                info = {"address": a}
+                info["status"] = _val(status)
+                info["instances"] = _val(
+                    await self._q(device.QueryNumberOfInstances(short))
+                )
+                info["operating_mode"] = _val(
+                    await self._q(device.QueryOperatingMode(short))
+                )
+                result.append(info)
+        logger.info("Config scan found %d control devices", len(result))
+        return result
+
+    async def identify_device(self, addr):
+        if not _HAVE_DEVICE:
+            raise RuntimeError("control device support requires python-dali 0.11")
+        await self._ready()
+        async with self._guard():
+            await self.driver.send(device.IdentifyDevice(address.DeviceShort(addr)))
+        return {"ok": True}
+
+    async def read_device(self, addr):
+        """Read details of one control device (instances + pushbutton timers)."""
+        if not _HAVE_DEVICE:
+            raise RuntimeError("control device support requires python-dali 0.11")
+        await self._ready()
+        short = address.DeviceShort(addr)
+        async with self._guard():
+            n = _val(await self._q(device.QueryNumberOfInstances(short))) or 0
+            op = _val(await self._q(device.QueryOperatingMode(short)))
+            instances = []
+            for i in range(n):
+                inst = {"instance": i}
+                inst["type"] = _val(
+                    await self._q(device.QueryInstanceType(short, i))
+                    if hasattr(device, "QueryInstanceType")
+                    else None
+                )
+                instances.append(inst)
+        return {"address": addr, "operating_mode": op, "instances": instances}
+
+    async def change_device_address(self, old, new):
+        """Change the short address of a control device."""
+        if not _HAVE_DEVICE:
+            raise RuntimeError("control device support requires python-dali 0.11")
+        await self._ready()
+        if not (0 <= int(new) <= 63):
+            raise ValueError("new address out of range")
+        async with self._guard():
+            await self.driver.send(device.DTR0(int(new)))
+            await self.driver.send(
+                device.SetShortAddress(address.DeviceShort(int(old)))
+            )
         return {"ok": True}
