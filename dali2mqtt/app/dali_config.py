@@ -51,7 +51,7 @@ class DaliConfig:
     @contextlib.asynccontextmanager
     async def _guard(self):
         """Own the bus for one operation: pause the bridge, serialise access."""
-        async with self._guard():
+        async with self._lock:
             if self._busy is not None:
                 self._busy.set()
             try:
