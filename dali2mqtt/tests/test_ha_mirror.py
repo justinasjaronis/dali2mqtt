@@ -74,3 +74,21 @@ def test_set_all_ignores_bad_action():
     m = make_mirror({20: ["dining"]})
     m.set_all("dim")
     assert m._client.calls == []
+
+
+def test_set_address_on():
+    m = make_mirror({20: ["dining"]})
+    m.set_address(20, "on")
+    assert m._client.calls == [("homeassistant", "turn_on", {"entity_id": "switch.mapped_dining"})]
+
+
+def test_set_address_off():
+    m = make_mirror({20: ["dining"]})
+    m.set_address(20, "off")
+    assert m._client.calls[0][1] == "turn_off"
+
+
+def test_set_address_unmapped_noop():
+    m = make_mirror({20: ["dining"]})
+    m.set_address(21, "on")
+    assert m._client.calls == []

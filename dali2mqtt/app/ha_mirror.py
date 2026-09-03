@@ -51,6 +51,18 @@ class HAEntityMirror:
         for entity in self._switch_map.get(address, []):
             self._call_entity(entity, "toggle")
 
+    def set_address(self, address, action):
+        """Turn every entity mapped to a DALI address on/off.
+
+        Used when a physical switch sends an explicit on-command
+        (RecallMaxLevel) or off-command (Off), rather than a toggle.
+        """
+        if not self.enabled or action not in ("on", "off"):
+            return
+        service = f"turn_{action}"
+        for entity in self._switch_map.get(address, []):
+            self._call_entity(entity, service)
+
     def set_all(self, action):
         """Set every mapped entity to a fixed state (`on`/`off`).
 

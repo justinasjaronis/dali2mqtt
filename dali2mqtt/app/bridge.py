@@ -83,6 +83,21 @@ def simulate_broadcast(action):
     return {"ok": True, "action": action, "entities": mirror.all_entities()}
 
 
+def mirror_action(command):
+    """Classify a DALI bus command as 'on', 'off', or None for HA mirroring.
+
+    Only commands that physical switches emit are matched -- RecallMaxLevel for
+    on, Off for off. The bridge controls lamps with DAPC (arc power), which is
+    deliberately NOT matched, so the mirror never reacts to the bridge's own
+    traffic (no feedback loop on self-mapped addresses).
+    """
+    if isinstance(command, Off):
+        return "off"
+    if isinstance(command, gear.RecallMaxLevel):
+        return "on"
+    return None
+
+
 def publish_bus_event(command, response):
     """Publish an observed DALI bus command to MQTT as a trigger source.
 
@@ -560,25 +575,19 @@ def print_command_and_response(data_object, dev, command, response, config_comma
                 data_object["queue"].put_nowait(addr)
             # Mirror a whole-house broadcast all-off / all-on (e.g. a bedside
             # "everything off" switch) onto the mapped Home Assistant entities.
-            if isinstance(command.destination, address.Broadcast) and (
-                mirror is not None and mirror.enabled
+            action = mirror_action(command)
+            if (
+                action
+                and isinstance(command.destination, address.Broadcast)
+                and mirror is not None
+                and mirror.enabled
             ):
-                action = None
-                if isinstance(command, Off) or (
-                    isinstance(command, gear.DAPC) and command.power == 0
-                ):
-                    action = "off"
-                elif isinstance(command, gear.RecallMaxLevel) or (
-                    isinstance(command, gear.DAPC) and command.power > 0
-                ):
-                    action = "on"
-                if action:
-                    try:
-                        asyncio.get_event_loop().run_in_executor(
-                            None, mirror.set_all, action
-                        )
-                    except RuntimeError:
-                        mirror.set_all(action)
+                try:
+                    asyncio.get_event_loop().run_in_executor(
+                        None, mirror.set_all, action
+                    )
+                except RuntimeError:
+                    mirror.set_all(action)
             return
 
         addr = command.destination.address
@@ -597,19 +606,18 @@ def print_command_and_response(data_object, dev, command, response, config_comma
         ):
             data_object["queue"].put_nowait(addr)
 
-        if (
-            mirror is not None
-            and isinstance(command, (SetFadeTime, Off))
-            and mirror.is_mapped(addr)
-        ):
-            # toggle_address makes blocking HTTP calls to Home Assistant; run it
+        # A physical switch mapped to this address: RecallMaxLevel -> turn the
+        # HA entity on, Off -> turn it off (explicit, not toggle).
+        action = mirror_action(command)
+        if mirror is not None and action and mirror.is_mapped(addr):
+            # set_address makes blocking HTTP calls to Home Assistant; run it
             # in a thread so it never stalls the asyncio event loop.
             try:
                 asyncio.get_event_loop().run_in_executor(
-                    None, mirror.toggle_address, addr
+                    None, mirror.set_address, addr, action
                 )
             except RuntimeError:
-                mirror.toggle_address(addr)
+                mirror.set_address(addr, action)
     except Exception as err:
         logger.error("Error processing DALI bus command: %s", err)
 

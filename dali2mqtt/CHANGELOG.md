@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.0
+
+- Switch mirror now follows the switch's **explicit** intent: `RecallMaxLevel`
+  turns the mapped HA entity **on**, `Off` turns it **off** (previously it only
+  matched `Off` and did a *toggle*, so a switch that alternates on/off commands
+  needed two presses). `DAPC` (the bridge's own control command) is not matched,
+  so the mirror never reacts to bridge traffic (no feedback loop).
+
 ## 1.9.0
 
 - Republish lamps/groups when Home Assistant restarts: subscribe to the HA
