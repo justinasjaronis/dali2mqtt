@@ -65,6 +65,24 @@ def simulate_button(addr):
     return {"ok": True, "address": int(addr)}
 
 
+def simulate_broadcast(action):
+    """Simulate a DALI broadcast all-off / all-on, for remote testing.
+
+    Runs the same mirror.set_all a real broadcast Off/RecallMaxLevel would.
+    (Blocking HTTP inside; call from an executor.)
+    """
+    if action not in ("on", "off"):
+        return {"ok": False, "error": "action must be 'on' or 'off'"}
+    data_object = _runtime.get("data")
+    if data_object is None:
+        return {"ok": False, "error": "bridge not connected yet"}
+    mirror = data_object.get("mirror")
+    if mirror is None or not getattr(mirror, "enabled", False):
+        return {"ok": False, "error": "HA mirror not enabled (check switch_map)"}
+    mirror.set_all(action)
+    return {"ok": True, "action": action, "entities": mirror.all_entities()}
+
+
 def publish_bus_event(command, response):
     """Publish an observed DALI bus command to MQTT as a trigger source.
 
@@ -680,7 +698,7 @@ def main(args):
 
         web = DaliWebServer(
             dali_driver, config, reinit=reinit_discovery, busy=config_busy,
-            simulate=simulate_button, port=8099,
+            simulate=simulate_button, simulate_broadcast=simulate_broadcast, port=8099,
         )
         asyncio.ensure_future(web.start())
     except Exception as err:  # noqa: BLE001

@@ -127,3 +127,20 @@ async def test_broadcast_recall_max_sets_all_on(monkeypatch):
 async def test_broadcast_query_does_nothing(monkeypatch):
     m = await _run_cmd(monkeypatch, gear.QueryActualLevel(address.Broadcast()))
     assert m.set_all_calls == []
+
+
+def test_simulate_broadcast_off(monkeypatch):
+    class M:
+        enabled = True
+        def __init__(self): self.calls = []
+        def set_all(self, a): self.calls.append(a)
+        def all_entities(self): return ["dining", "sport room"]
+    m = M()
+    monkeypatch.setitem(bridge._runtime, "data", {"mirror": m})
+    res = bridge.simulate_broadcast("off")
+    assert res["ok"] is True and res["action"] == "off"
+    assert m.calls == ["off"]
+
+
+def test_simulate_broadcast_bad_action(monkeypatch):
+    assert bridge.simulate_broadcast("dim")["ok"] is False

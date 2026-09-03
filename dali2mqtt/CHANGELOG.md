@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.1
+
+- Config API: `POST /api/simulate_broadcast/{on|off}` triggers the broadcast
+  all-off/all-on mirror without a physical switch (remote testing).
+
 ## 1.8.0
 
 - New: a DALI **broadcast all-off / all-on** (e.g. a bedside "everything off"
