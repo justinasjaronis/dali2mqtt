@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.0
+
+- Config UI: added a **Memory Bank Tool** (like DALI Cockpit) — read any memory
+  bank of a control gear or control device as a hex/ASCII dump, and write a
+  single byte to a location. Writes are targeted to one device via the addressed
+  ENABLE WRITE MEMORY command and unlock/relock the bank automatically.
+
 ## 1.4.0
 
 - Config UI: added a **Bus Monitor** — a live view of DALI bus traffic. DALI-1

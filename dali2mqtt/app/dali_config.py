@@ -356,3 +356,75 @@ class DaliConfig:
                 device.SetShortAddress(address.DeviceShort(int(old)))
             )
         return {"ok": True}
+
+    # ------------------------------------------------------- memory bank tool
+    def _mem_addr_mod(self, addr, is_device):
+        if is_device:
+            if not _HAVE_DEVICE:
+                raise RuntimeError("control device support requires python-dali 0.11")
+            return address.DeviceShort(addr), device
+        return address.Short(addr), gear
+
+    @staticmethod
+    def _resp_byte(r):
+        if r is None:
+            return None
+        raw = getattr(r, "raw_value", None)
+        if raw is None:
+            return None
+        try:
+            return int(raw.as_integer)
+        except Exception:  # noqa: BLE001
+            return None
+
+    async def read_memory(self, addr, bank, start=0, count=16, is_device=False):
+        """Read `count` bytes of a memory bank from a control gear or device."""
+        await self._ready()
+        short, mod = self._mem_addr_mod(addr, is_device)
+        count = max(1, min(int(count), 255))
+
+        def seq():
+            out = []
+            yield mod.DTR1(int(bank))
+            yield mod.DTR0(int(start))
+            for _ in range(count):
+                r = yield mod.ReadMemoryLocation(short)
+                out.append(self._resp_byte(r))
+            return out
+
+        async with self._guard():
+            data = await self.driver.run_sequence(seq())
+        return {"address": addr, "bank": int(bank), "start": int(start), "data": data}
+
+    async def write_memory(self, addr, bank, offset, value, is_device=False, unlock=True):
+        """Write a single byte to a memory bank location (targeted, with unlock).
+
+        Uses the addressed ENABLE WRITE MEMORY command so only this device
+        accepts the following (broadcast) WRITE MEMORY LOCATION.
+        """
+        await self._ready()
+        short, mod = self._mem_addr_mod(addr, is_device)
+        value = int(value) & 0xFF
+        offset = int(offset) & 0xFF
+
+        def seq():
+            yield mod.DTR1(int(bank))
+            yield mod.EnableWriteMemory(short)
+            if unlock:
+                yield mod.DTR0(2)
+                yield mod.WriteMemoryLocationNoReply(0x55)
+            yield mod.DTR0(offset)
+            r = yield mod.WriteMemoryLocation(value)
+            written = self._resp_byte(r)
+            if unlock:
+                yield mod.DTR0(2)
+                yield mod.WriteMemoryLocationNoReply(0xFF)
+            return written
+
+        async with self._guard():
+            written = await self.driver.run_sequence(seq())
+        logger.info(
+            "Memory write %s bank %s offset %s = %s (readback %s)",
+            addr, bank, offset, value, written,
+        )
+        return {"ok": True, "written": written, "expected": value}

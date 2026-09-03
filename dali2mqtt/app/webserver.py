@@ -48,6 +48,9 @@ class DaliWebServer:
         app.router.add_post("/api/device/{addr}/identify", self.api_device_identify)
         app.router.add_post("/api/device/{addr}/address", self.api_device_address)
         app.router.add_get("/api/monitor", self.api_monitor)
+        # Memory bank tool
+        app.router.add_get("/api/memory", self.api_memory_read)
+        app.router.add_post("/api/memory/write", self.api_memory_write)
         app.router.add_static("/static/", STATIC_DIR)
         return app
 
@@ -178,3 +181,35 @@ class DaliWebServer:
         events = self.cfg.monitor_events(since)
         last = events[-1]["seq"] if events else since
         return _json({"events": events, "last": last})
+
+    # ------------------------------------------------------ memory bank tool
+    async def api_memory_read(self, request):
+        q = request.query
+        try:
+            res = await self.cfg.read_memory(
+                int(q["addr"]),
+                int(q.get("bank", "0")),
+                int(q.get("start", "0")),
+                int(q.get("count", "16")),
+                is_device=q.get("device") in ("1", "true", "True"),
+            )
+            return _json(res)
+        except Exception as err:  # noqa: BLE001
+            logger.exception("memory read failed")
+            return _json({"error": str(err)}, 500)
+
+    async def api_memory_write(self, request):
+        body = await self._body(request)
+        try:
+            res = await self.cfg.write_memory(
+                int(body["addr"]),
+                int(body["bank"]),
+                int(body["offset"]),
+                int(body["value"]),
+                is_device=bool(body.get("device")),
+                unlock=bool(body.get("unlock", True)),
+            )
+            return _json(res)
+        except Exception as err:  # noqa: BLE001
+            logger.exception("memory write failed")
+            return _json({"error": str(err)}, 500)

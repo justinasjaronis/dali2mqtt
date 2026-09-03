@@ -152,6 +152,7 @@ function selectDevice(a){
       <h2>Instances</h2>
       <div id="devInstances" class="muted">Press “Read instances”.</div>
     </div>
+    ${memCard(a,true)}
     <div class="card">
       <h2>Change short address</h2>
       <div class="field"><label>New address (0–63)</label>
@@ -222,6 +223,8 @@ function select(a){
       <div id="scenes" class="muted">Loading…</div>
     </div>
 
+    ${memCard(a,false)}
+
     <div class="card">
       <h2>Change short address</h2>
       <div class="field"><label>New address (0–63)</label>
@@ -277,6 +280,60 @@ async function commission(readdress){
   catch(e){ toast("Commission failed: "+e.message); }
 }
 async function reinit(){ try{ await post("api/reinit"); toast("HA entities refreshed"); }catch(e){toast(e.message);} }
+
+// ---- Memory Bank Tool (read/write device memory banks, like Cockpit) ----
+function memCard(addr, isDev){
+  return `
+    <div class="card">
+      <h2>Memory banks</h2>
+      <div class="field" style="flex-wrap:wrap">
+        <label style="width:auto">Bank</label><input type="number" id="memBank" value="0" min="0" max="255" style="width:64px">
+        <label style="width:auto">Start</label><input type="number" id="memStart" value="0" min="0" max="255" style="width:64px">
+        <label style="width:auto">Count</label><input type="number" id="memCount" value="32" min="1" max="255" style="width:64px">
+        <button onclick="readMemory(${addr},${isDev})">Read</button>
+      </div>
+      <pre id="memOut" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;max-height:40vh;overflow:auto;white-space:pre;font-size:12px;margin:6px 0">—</pre>
+      <div class="field" style="flex-wrap:wrap">
+        <label style="width:auto">Write offset</label><input type="number" id="memWOff" min="0" max="255" style="width:64px">
+        <label style="width:auto">value (0–255)</label><input type="number" id="memWVal" min="0" max="255" style="width:70px">
+        <label style="width:auto;display:flex;align-items:center;gap:4px"><input type="checkbox" id="memUnlock" checked> unlock</label>
+        <button class="warn" onclick="writeMemory(${addr},${isDev})">Write byte</button>
+      </div>
+      <div class="muted">Reading is safe. <b>Writing changes device configuration</b> — bank 0 is read-only,
+        and wrong values can misconfigure a fixture/switch. The write targets only this device
+        (addressed ENABLE WRITE MEMORY) and unlocks/relocks the bank.</div>
+    </div>`;
+}
+async function readMemory(addr, isDev){
+  const bank=+$("#memBank").value, start=+$("#memStart").value, count=+$("#memCount").value;
+  $("#memOut").textContent="Reading…";
+  try{
+    const d=await api(`api/memory?addr=${addr}&bank=${bank}&start=${start}&count=${count}&device=${isDev?1:0}`);
+    $("#memOut").textContent=hexDump(d.data, start);
+  }catch(e){ $("#memOut").textContent="Failed: "+e.message; }
+}
+function hexDump(bytes, start){
+  let out="", row=16;
+  for(let i=0;i<bytes.length;i+=row){
+    const off=(start+i)&0xff;
+    const slice=bytes.slice(i,i+row);
+    const hex=slice.map(b=>b==null?"--":b.toString(16).padStart(2,"0")).join(" ");
+    const asc=slice.map(b=>(b!=null&&b>=32&&b<127)?String.fromCharCode(b):".").join("");
+    out+=off.toString(16).padStart(2,"0")+":  "+hex.padEnd(row*3)+"  "+asc+"\n";
+  }
+  return out||"(no data)";
+}
+async function writeMemory(addr, isDev){
+  const bank=+$("#memBank").value, offset=+$("#memWOff").value, value=+$("#memWVal").value;
+  const unlock=$("#memUnlock").checked;
+  if(isNaN(offset)||isNaN(value)){ toast("Enter offset and value"); return; }
+  if(!confirm(`Write bank ${bank}, offset ${offset} = ${value} (0x${value.toString(16)}) on ${isDev?'D':'A'}${addr}?\n\nThis changes device configuration. Continue?`)) return;
+  try{
+    const r=await post("api/memory/write",{addr,bank,offset,value,device:isDev,unlock});
+    toast("Wrote "+value+" (readback "+r.written+")");
+    readMemory(addr,isDev);
+  }catch(e){ toast("Write failed: "+e.message); }
+}
 
 // ---- Bus monitor (find DALI-1 switches by watching what they transmit) ----
 let monOn=false, monLast=0, monTimer=null, monEvents=[], monHidePolls=true;
