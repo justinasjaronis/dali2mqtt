@@ -53,3 +53,17 @@ pip install -r requirements.txt
 # Use a config path that does not clash with the add-on manifest (config.yaml):
 python3 -m app --config ~/dali2mqtt.yaml    # creates an example config on first run
 ```
+
+## Credits & License
+
+This project is a fork of **[dali2mqtt](https://github.com/dgomes/dali2mqtt)**,
+originally created by **Diogo Gomes ([@dgomes](https://github.com/dgomes))**, with
+later contributions by **Tobias Albert**. Huge thanks to the original authors —
+the DALI &harr; MQTT core builds on their work.
+
+It also builds on **[python-dali](https://github.com/sde1000/python-dali)** by
+Simon de Sio and contributors.
+
+Licensed under the **MIT License** — the same license as the upstream project,
+so there is no license conflict. All original copyright notices are retained in
+[LICENSE](LICENSE); see that file for the full text.
