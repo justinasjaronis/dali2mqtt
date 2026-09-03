@@ -22,7 +22,7 @@ RUN apt-get update \
         libudev-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Isolated virtualenv (Debian bookworm is PEP-668 externally managed)
+# Isolated virtualenv (Debian bullseye externally managed)
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 
