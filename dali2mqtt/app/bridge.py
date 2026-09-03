@@ -66,11 +66,22 @@ def publish_bus_event(command, response):
         return
     try:
         base = Config()[CONF_MQTT_BASE_TOPIC]
+        dest = getattr(command, "destination", None)
+        addr_num = None
+        dest_kind = None
+        if isinstance(dest, address.Short):
+            addr_num, dest_kind = dest.address, "short"
+        elif isinstance(dest, address.Group):
+            addr_num, dest_kind = dest.group, "group"
+        elif isinstance(dest, address.Broadcast):
+            dest_kind = "broadcast"
         payload = json.dumps(
             {
                 "command": str(command),
                 "type": name,
-                "destination": str(getattr(command, "destination", "")),
+                "address": addr_num,
+                "destination_kind": dest_kind,
+                "destination": str(dest) if dest is not None else "",
                 "response": str(response) if response is not None else None,
             }
         )
