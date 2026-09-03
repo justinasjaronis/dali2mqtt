@@ -352,6 +352,15 @@ async def on_message_reinitialize_lamps_cmd(mqtt_client, data_object, msg):
     await initialize_lamps(data_object, mqtt_client)
 
 
+async def on_message_ha_online(mqtt_client, data_object, msg):
+    """Republish discovery/state when Home Assistant restarts (birth message)."""
+    payload = msg.payload.decode() if isinstance(msg.payload, bytes) else msg.payload
+    if str(payload).lower() != "online":
+        return
+    logger.info("Home Assistant came online; republishing lamps")
+    await initialize_lamps(data_object, mqtt_client)
+
+
 async def on_message_poll_lamps_cmd(mqtt_client, data_object, msg):
     """Callback on MQTT poll lamps command message."""
     logger.info("Polling lamps")
@@ -378,6 +387,8 @@ async def on_connect(client, data_object, flags, result):  # pylint: disable=W06
             (MQTT_SCENE_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC], "+"), 0),
             (MQTT_SCAN_LAMPS_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC]), 0),
             (MQTT_POLL_LAMPS_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC]), 0),
+            # Home Assistant birth/will topic: republish on HA restart.
+            ("{}/status".format(config[CONF_HA_DISCOVERY_PREFIX]), 0),
         ]
     )
     logger.debug("Subscribe result: %s", result)
@@ -506,6 +517,10 @@ async def create_mqtt_client(driver_object, mirror):
         (
             MQTT_POLL_LAMPS_COMMAND_TOPIC.format(config[CONF_MQTT_BASE_TOPIC]),
             on_message_poll_lamps_cmd,
+        ),
+        (
+            "{}/status".format(config[CONF_HA_DISCOVERY_PREFIX]),
+            on_message_ha_online,
         ),
     ]:
         mqttc.asyncio_listeners.message_callback_add(topic, callback)

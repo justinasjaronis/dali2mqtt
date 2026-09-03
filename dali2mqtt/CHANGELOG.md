@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.0
+
+- Republish lamps/groups when Home Assistant restarts: subscribe to the HA
+  birth topic `<discovery_prefix>/status` and re-run discovery on `online`
+  (ported from upstream dgomes/dali2mqtt). Entities/states recover after an HA
+  restart without waiting for the next poll.
+
 ## 1.8.1
 
 - Config API: `POST /api/simulate_broadcast/{on|off}` triggers the broadcast

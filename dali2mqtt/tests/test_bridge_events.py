@@ -144,3 +144,23 @@ def test_simulate_broadcast_off(monkeypatch):
 
 def test_simulate_broadcast_bad_action(monkeypatch):
     assert bridge.simulate_broadcast("dim")["ok"] is False
+
+
+async def test_ha_online_triggers_reinit(monkeypatch):
+    called = []
+    async def fake_init(data, client):
+        called.append(True)
+    monkeypatch.setattr(bridge, "initialize_lamps", fake_init)
+    msg = type("M", (), {"payload": b"online"})()
+    await bridge.on_message_ha_online(None, {}, msg)
+    assert called == [True]
+
+
+async def test_ha_offline_is_ignored(monkeypatch):
+    called = []
+    async def fake_init(data, client):
+        called.append(True)
+    monkeypatch.setattr(bridge, "initialize_lamps", fake_init)
+    msg = type("M", (), {"payload": b"offline"})()
+    await bridge.on_message_ha_online(None, {}, msg)
+    assert called == []
