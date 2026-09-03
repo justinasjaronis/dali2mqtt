@@ -21,10 +21,11 @@ def _json(data, status=200):
 
 
 class DaliWebServer:
-    def __init__(self, driver, config, reinit=None, busy=None, port=8099):
+    def __init__(self, driver, config, reinit=None, busy=None, simulate=None, port=8099):
         self.cfg = DaliConfig(driver, busy=busy)
         self.config = config
         self.reinit = reinit  # async callable to refresh MQTT discovery
+        self.simulate = simulate  # sync callable(addr) -> dict, tests the HA mirror
         self.port = port
         self._runner = None
 
@@ -51,6 +52,7 @@ class DaliWebServer:
         # Memory bank tool
         app.router.add_get("/api/memory", self.api_memory_read)
         app.router.add_post("/api/memory/write", self.api_memory_write)
+        app.router.add_post("/api/simulate_button/{addr}", self.api_simulate_button)
         # DALI-2 push-button instance config (Part 301)
         app.router.add_get("/api/device/{addr}/pb/{instance}", self.api_pb_read)
         app.router.add_post("/api/device/{addr}/pb/{instance}/timer", self.api_pb_timer)
@@ -175,6 +177,18 @@ class DaliWebServer:
             )
         except ValueError as err:
             return _json({"error": str(err)}, 400)
+        return _json(res)
+
+    async def api_simulate_button(self, request):
+        if self.simulate is None:
+            return _json({"error": "simulation not available"}, 501)
+        addr = self._addr(request)
+        import asyncio
+
+        # toggle_address does blocking HTTP; run it off the event loop.
+        res = await asyncio.get_event_loop().run_in_executor(
+            None, self.simulate, addr
+        )
         return _json(res)
 
     async def api_monitor(self, request):

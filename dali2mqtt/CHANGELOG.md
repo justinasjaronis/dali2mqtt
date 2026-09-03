@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.0
+
+- Config API: `POST /api/simulate_button/{addr}` triggers the HA mirror for a
+  mapped address (entity resolve + toggle) without a physical DALI press -
+  handy for testing switch_map mappings remotely.
+
 ## 1.6.2
 
 - HA entity mirror (physical DALI switch -> HA entity toggle) now works out of

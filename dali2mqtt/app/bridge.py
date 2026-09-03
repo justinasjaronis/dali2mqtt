@@ -46,6 +46,25 @@ async def reinit_discovery():
     await initialize_lamps(data_object, client)
 
 
+def simulate_button(addr):
+    """Simulate a physical DALI button press, for testing the HA mirror remotely.
+
+    Directly invokes the same mirror -> Home Assistant toggle that a real
+    Off/SetFadeTime command to a mapped address would trigger. Returns a dict
+    describing the outcome. (Blocking HTTP inside; call from an executor.)
+    """
+    data_object = _runtime.get("data")
+    if data_object is None:
+        return {"ok": False, "error": "bridge not connected yet"}
+    mirror = data_object.get("mirror")
+    if mirror is None or not getattr(mirror, "enabled", False):
+        return {"ok": False, "error": "HA mirror not enabled (check switch_map)"}
+    if not mirror.is_mapped(int(addr)):
+        return {"ok": False, "error": f"address {addr} not in switch_map"}
+    mirror.toggle_address(int(addr))
+    return {"ok": True, "address": int(addr)}
+
+
 def publish_bus_event(command, response):
     """Publish an observed DALI bus command to MQTT as a trigger source.
 
@@ -638,7 +657,10 @@ def main(args):
     try:
         from .webserver import DaliWebServer
 
-        web = DaliWebServer(dali_driver, config, reinit=reinit_discovery, busy=config_busy, port=8099)
+        web = DaliWebServer(
+            dali_driver, config, reinit=reinit_discovery, busy=config_busy,
+            simulate=simulate_button, port=8099,
+        )
         asyncio.ensure_future(web.start())
     except Exception as err:  # noqa: BLE001
         logger.error("Config web UI not started: %s", err)
