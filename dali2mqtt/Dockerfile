@@ -3,7 +3,8 @@ FROM ${BUILD_FROM}
 
 ENV LANG=C.UTF-8 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    S6_KEEP_ENV=1
 
 # System + build dependencies for python-dali / hidapi / pyusb
 RUN apt-get update \

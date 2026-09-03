@@ -7,15 +7,17 @@ RUNTIME_PATH=/data/dali2mqtt.runtime.json
 DEVICES_NAMES=/data/devices.yaml
 
 # --------------------------------------------------------------------------
-# Resolve the MQTT broker: manual override wins, otherwise use the Home
-# Assistant MQTT service, otherwise fail loudly.
+# Read options directly from /data/options.json with jq. This avoids any
+# dependency on the Supervisor API for basic configuration, which keeps the
+# add-on working even if the API token is unavailable.
 # --------------------------------------------------------------------------
-if bashio::config.has_value 'mqtt_host'; then
-    MQTT_HOST=$(bashio::config 'mqtt_host')
-    MQTT_PORT=$(bashio::config 'mqtt_port')
-    MQTT_USER=$(bashio::config 'mqtt_username')
-    MQTT_PASS=$(bashio::config 'mqtt_password')
-    bashio::var.is_empty "${MQTT_PORT}" && MQTT_PORT=1883
+MQTT_HOST=$(jq -r '.mqtt_host // ""' "${CONFIG_PATH}")
+MQTT_PORT=$(jq -r '.mqtt_port // ""' "${CONFIG_PATH}")
+MQTT_USER=$(jq -r '.mqtt_username // ""' "${CONFIG_PATH}")
+MQTT_PASS=$(jq -r '.mqtt_password // ""' "${CONFIG_PATH}")
+
+if [ -n "${MQTT_HOST}" ]; then
+    [ -z "${MQTT_PORT}" ] && MQTT_PORT=1883
     bashio::log.info "Using manually configured MQTT broker ${MQTT_HOST}:${MQTT_PORT}"
 elif bashio::services.available 'mqtt'; then
     MQTT_HOST=$(bashio::services 'mqtt' 'host')
@@ -55,7 +57,7 @@ jq -n \
         }
       | del(.mqtt_host)' > "${RUNTIME_PATH}"
 
-bashio::log.info "Starting dali2mqtt (driver: $(bashio::config 'dali_driver'))"
+bashio::log.info "Starting dali2mqtt (driver: $(jq -r '.dali_driver' "${CONFIG_PATH}"))"
 
 cd /opt/dali2mqtt
 exec python3 -m app --options-json "${RUNTIME_PATH}"
