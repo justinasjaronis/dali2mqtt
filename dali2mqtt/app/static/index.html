@@ -279,19 +279,24 @@ async function commission(readdress){
 async function reinit(){ try{ await post("api/reinit"); toast("HA entities refreshed"); }catch(e){toast(e.message);} }
 
 // ---- Bus monitor (find DALI-1 switches by watching what they transmit) ----
-let monOn=false, monLast=0, monTimer=null, monLines=[];
+let monOn=false, monLast=0, monTimer=null, monEvents=[], monHidePolls=true;
 function toggleMonitor(){ monOn?stopMonitor():startMonitor(); }
+// A frame is "bridge polling/noise" if it's a query or carries a response.
+function isPoll(e){ return /^Query/i.test(e.cmd||"") || (e.resp && e.resp.length>0); }
 function startMonitor(){
-  monOn=true; monLines=[]; $("#btnMon").classList.add("primary"); $("#btnMon").textContent="⏹ Stop monitor";
+  monOn=true; monEvents=[]; $("#btnMon").classList.add("primary"); $("#btnMon").textContent="⏹ Stop monitor";
   SEL=null; SELDEV=null; renderList();
   $("#detail").innerHTML=`
     <div class="card">
       <h2>Bus monitor <span class="muted" style="font-weight:400">— live DALI traffic</span></h2>
       <div class="muted">Press a physical button/switch now. DALI-1 switches have no address and
         can't be scanned — but you can see the command they broadcast here (e.g.
-        <code>GoToScene(GroupN, x)</code>, <code>RecallMaxLevel(GroupN)</code>, <code>Off(...)</code>).
-        Idle bridge polling also appears; watch for the new line when you press.</div>
-      <div class="cmds" style="margin:10px 0"><button onclick="clearMonitor()">Clear</button>
+        <code>GoToScene(GroupN, x)</code>, <code>RecallMaxLevel(GroupN)</code>, <code>Off(...)</code>).</div>
+      <div class="cmds" style="margin:10px 0;align-items:center">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="monFilter" ${monHidePolls?'checked':''} onchange="monHidePolls=this.checked;renderMonitor()">
+          Hide bridge polling (show only button/control commands)</label>
+        <button onclick="clearMonitor()">Clear</button>
         <span id="monStat" class="muted">listening…</span></div>
       <pre id="monLog" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;max-height:60vh;overflow:auto;white-space:pre-wrap;font-size:12px;margin:0"></pre>
     </div>`;
@@ -303,20 +308,23 @@ function stopMonitor(){
   $("#btnMon").classList.remove("primary"); $("#btnMon").textContent="🔎 Bus monitor";
   const s=$("#monStat"); if(s) s.textContent="stopped";
 }
-function clearMonitor(){ monLines=[]; const l=$("#monLog"); if(l) l.textContent=""; }
+function clearMonitor(){ monEvents=[]; renderMonitor(); }
+function renderMonitor(){
+  const log=$("#monLog"); if(!log) return;
+  let evs = monHidePolls ? monEvents.filter(e=>!isPoll(e)) : monEvents;
+  evs = evs.slice(-500);
+  log.textContent = evs.map(e=>`${e.t}  ${e.err?'⚠ ':''}${e.cmd}${e.resp?('   -> '+e.resp):''}`).join("\n");
+  log.scrollTop=log.scrollHeight;
+  const s=$("#monStat"); if(s) s.textContent = evs.length+(monHidePolls?" control frames":" frames")+" ("+monEvents.length+" total)";
+}
 async function pollMonitor(){
   if(!monOn) return;
   try{
     const d=await api("api/monitor?since="+monLast);
     monLast=d.last||monLast;
-    for(const e of (d.events||[])){
-      const line=`${e.t}  ${e.err?'⚠ ':''}${e.cmd}${e.resp?('   -> '+e.resp):''}`;
-      monLines.push(line);
-    }
-    if(monLines.length>500) monLines=monLines.slice(-500);
-    const log=$("#monLog");
-    if(log){ log.textContent=monLines.join("\n"); log.scrollTop=log.scrollHeight; }
-    const s=$("#monStat"); if(s) s.textContent=monLines.length+" frames";
+    for(const e of (d.events||[])) monEvents.push(e);
+    if(monEvents.length>2000) monEvents=monEvents.slice(-2000);
+    renderMonitor();
   }catch(e){ const s=$("#monStat"); if(s) s.textContent="error: "+e.message; }
 }
 
