@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.0
+
+- **Bus events to MQTT**: the bridge now publishes observed external DALI bus
+  commands (physical button/switch presses, DALI-2 input events) to
+  `<base_topic>/bus_event` as JSON. Home Assistant automations can trigger on
+  this to control ANY entity (e.g. toggle an eWeLink lamp) from a DALI button.
+- Config UI: added DALI-2 push-button instance config (Part 301) — timers
+  (short/double/repeat/stuck) and emitted-event filter.
+
 ## 1.5.0
 
 - Config UI: added a **Memory Bank Tool** (like DALI Cockpit) — read any memory

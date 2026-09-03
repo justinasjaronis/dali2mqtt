@@ -21,13 +21,31 @@ from dali.sequences import Commissioning
 
 try:
     import dali.device.general as device
+    import dali.device.sequences as devseq
     from dali.device import pushbutton as pb
+    from dali.device.general import EventScheme
+    from dali.address import InstanceNumber
 
     _HAVE_DEVICE = True
 except ImportError:  # python-dali < 0.11
     device = None
+    devseq = None
     pb = None
+    EventScheme = None
+    InstanceNumber = None
     _HAVE_DEVICE = False
+
+# Push-button instance event names (Part 301 Table 3), low bit first.
+PB_EVENTS = [
+    "button_released",
+    "button_pressed",
+    "short_press",
+    "double_press",
+    "long_press_start",
+    "long_press_repeat",
+    "long_press_stop",
+    "button_stuck_free",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -428,3 +446,101 @@ class DaliConfig:
             addr, bank, offset, value, written,
         )
         return {"ok": True, "written": written, "expected": value}
+
+    # -------------------------------------- DALI-2 push-button instance config
+    # Part 301. Timers are raw bytes: short/double/repeat in 20 ms steps,
+    # stuck in 1 s steps. Event filter selects which events the instance emits.
+    _PB_TIMER_SET = None  # set lazily to avoid touching pb when unavailable
+    _PB_TIMER_QUERY = None
+
+    def _pb_maps(self):
+        return (
+            {
+                "short": pb.SetShortTimer,
+                "double": pb.SetDoubleTimer,
+                "repeat": pb.SetRepeatTimer,
+                "stuck": pb.SetStuckTimer,
+            },
+            {
+                "short": pb.QueryShortTimer,
+                "double": pb.QueryDoubleTimer,
+                "repeat": pb.QueryRepeatTimer,
+                "stuck": pb.QueryStuckTimer,
+            },
+        )
+
+    async def read_pushbutton(self, addr, instance):
+        """Read a push-button instance: type, timers, and event filter."""
+        if not _HAVE_DEVICE:
+            raise RuntimeError("control device support requires python-dali 0.11")
+        await self._ready()
+        short = address.DeviceShort(addr)
+        inst = InstanceNumber(int(instance))
+        _, qtimers = self._pb_maps()
+        async with self._guard():
+            itype = _val(await self._q(device.QueryInstanceType(short, inst)))
+            timers = {}
+            for name, cmd in qtimers.items():
+                timers[name] = _val(await self._q(cmd(short, inst)))
+            try:
+                flt = await self.driver.run_sequence(
+                    devseq.QueryEventFilters(device=short, instance=inst, filter_type=pb)
+                )
+                mask = int(flt) if flt is not None else None
+            except Exception as err:  # noqa: BLE001
+                logger.debug("QueryEventFilters failed: %s", err)
+                mask = None
+        events = None
+        if mask is not None:
+            events = [PB_EVENTS[i] for i in range(8) if mask & (1 << i)]
+        return {
+            "address": addr,
+            "instance": int(instance),
+            "instance_type": itype,
+            "timers": timers,
+            "event_filter_mask": mask,
+            "events": events,
+        }
+
+    async def set_pushbutton_timer(self, addr, instance, which, value):
+        if not _HAVE_DEVICE:
+            raise RuntimeError("control device support requires python-dali 0.11")
+        await self._ready()
+        setters, _ = self._pb_maps()
+        if which not in setters:
+            raise ValueError(f"unknown timer {which}")
+        short = address.DeviceShort(addr)
+        inst = InstanceNumber(int(instance))
+        async with self._guard():
+            await self.driver.send(device.DTR0(int(value) & 0xFF))
+            await self.driver.send(setters[which](short, inst))
+        return {"ok": True}
+
+    async def set_pushbutton_events(self, addr, instance, mask):
+        """Set the event filter mask (which events this button emits)."""
+        if not _HAVE_DEVICE:
+            raise RuntimeError("control device support requires python-dali 0.11")
+        await self._ready()
+        short = address.DeviceShort(addr)
+        inst = InstanceNumber(int(instance))
+        filt = pb.InstanceEventFilter(int(mask) & 0xFF)
+        async with self._guard():
+            result = await self.driver.run_sequence(
+                devseq.SetEventFilters(device=short, instance=inst, filter_value=filt)
+            )
+        return {"ok": True, "result": int(result) if result is not None else None}
+
+    async def set_pushbutton_scheme(self, addr, instance, scheme):
+        """Set the event addressing scheme for an instance."""
+        if not _HAVE_DEVICE:
+            raise RuntimeError("control device support requires python-dali 0.11")
+        await self._ready()
+        short = address.DeviceShort(addr)
+        inst = InstanceNumber(int(instance))
+        async with self._guard():
+            result = await self.driver.run_sequence(
+                devseq.SetEventSchemes(
+                    device=short, instance=inst, scheme=EventScheme(int(scheme))
+                )
+            )
+        return {"ok": True, "result": int(result) if result is not None else None}

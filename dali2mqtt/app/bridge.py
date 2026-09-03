@@ -46,6 +46,39 @@ async def reinit_discovery():
     await initialize_lamps(data_object, client)
 
 
+def publish_bus_event(command, response):
+    """Publish an observed DALI bus command to MQTT as a trigger source.
+
+    This lets Home Assistant automations react to physical DALI buttons/switches
+    (including DALI-1, which broadcast scene/level commands) and to DALI-2 input
+    events. Queries are skipped. The payload carries the decoded command so an
+    automation can match a specific button (identify it with the Bus Monitor).
+    """
+    client = _runtime.get("client")
+    if client is None or command is None:
+        return
+    name = type(command).__name__
+    if name.startswith("Query") or name in (
+        "DTR0", "DTR1", "DTR2", "Terminate", "Initialise",
+        "Randomise", "Compare", "Withdraw",
+        "ReadMemoryLocation", "WriteMemoryLocation", "WriteMemoryLocationNoReply",
+    ):
+        return
+    try:
+        base = Config()[CONF_MQTT_BASE_TOPIC]
+        payload = json.dumps(
+            {
+                "command": str(command),
+                "type": name,
+                "destination": str(getattr(command, "destination", "")),
+                "response": str(response) if response is not None else None,
+            }
+        )
+        client.publish(f"{base}/bus_event", payload)
+    except Exception as err:  # noqa: BLE001
+        logger.debug("bus_event publish failed: %s", err)
+
+
 class _SelectorEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
     """Force a SelectSelector loop (required by some DALI HID drivers)."""
 
@@ -455,6 +488,8 @@ def print_command_and_response(data_object, dev, command, response, config_comma
             return
 
         logger.debug("Received command %s", command)
+        # Surface external bus activity (button/switch presses) to HA via MQTT.
+        publish_bus_event(command, response)
         if isinstance(command.destination, (address.Group, address.Broadcast)):
             # Broadcast/group command: re-read every known lamp.
             for addr in data_object["all_lamps"]:

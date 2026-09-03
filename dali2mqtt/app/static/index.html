@@ -152,6 +152,7 @@ function selectDevice(a){
       <h2>Instances</h2>
       <div id="devInstances" class="muted">Press “Read instances”.</div>
     </div>
+    ${pbCard(a)}
     ${memCard(a,true)}
     <div class="card">
       <h2>Change short address</h2>
@@ -280,6 +281,55 @@ async function commission(readdress){
   catch(e){ toast("Commission failed: "+e.message); }
 }
 async function reinit(){ try{ await post("api/reinit"); toast("HA entities refreshed"); }catch(e){toast(e.message);} }
+
+// ---- DALI-2 push-button instance config (Part 301) ----
+const PB_EVENTS=["button_released","button_pressed","short_press","double_press","long_press_start","long_press_repeat","long_press_stop","button_stuck_free"];
+function pbCard(addr){
+  return `
+    <div class="card">
+      <h2>Push-button instance (DALI-2 / Part 301)</h2>
+      <div class="field"><label>Instance #</label>
+        <input type="number" id="pbInst" value="0" min="0" max="31" style="width:64px">
+        <button onclick="readPb(${addr})">Read</button>
+        <span id="pbType" class="muted"></span></div>
+      <div id="pbBody" class="muted">Read an instance to view/edit its timers and events.</div>
+    </div>`;
+}
+async function readPb(addr){
+  const inst=+$("#pbInst").value;
+  $("#pbBody").innerHTML='<span class="spin"></span> Reading…';
+  try{
+    const d=await api(`api/device/${addr}/pb/${inst}`);
+    $("#pbType").textContent="type "+(d.instance_type??'–')+(d.instance_type===1?" (push button)":"");
+    const t=d.timers||{};
+    const timerRow=(k,label,unit)=>`<div class="field"><label>${label}</label>
+      <input type="number" id="pbT_${k}" value="${t[k]??''}" min="0" max="255" style="width:80px">
+      <span class="muted">${unit}</span><button onclick="setPbTimer(${addr},'${k}')">Set</button></div>`;
+    const mask=d.event_filter_mask||0;
+    const evBoxes=PB_EVENTS.map((e,i)=>`<label style="display:flex;gap:5px;align-items:center;font-size:12px">
+      <input type="checkbox" data-bit="${i}" ${mask&(1<<i)?'checked':''}> ${e}</label>`).join("");
+    $("#pbBody").innerHTML=`
+      ${timerRow('short','Short timer','×20 ms')}
+      ${timerRow('double','Double timer','×20 ms (0=off)')}
+      ${timerRow('repeat','Repeat timer','×20 ms')}
+      ${timerRow('stuck','Stuck timer','×1 s')}
+      <h2 style="font-size:13px;margin:12px 0 6px">Emitted events (filter)</h2>
+      <div id="pbEvents" style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;max-width:460px">${evBoxes}</div>
+      <div class="cmds" style="margin-top:8px"><button onclick="setPbEvents(${addr})">Set events</button></div>`;
+  }catch(e){ $("#pbBody").textContent="Failed: "+e.message; }
+}
+async function setPbTimer(addr,which){
+  const inst=+$("#pbInst").value, value=+$("#pbT_"+which).value;
+  try{ await post(`api/device/${addr}/pb/${inst}/timer`,{which,value}); toast(which+" timer set"); }
+  catch(e){toast(e.message);}
+}
+async function setPbEvents(addr){
+  const inst=+$("#pbInst").value;
+  let mask=0;
+  document.querySelectorAll('#pbEvents input[type=checkbox]').forEach(c=>{ if(c.checked) mask|=(1<<+c.dataset.bit); });
+  try{ const r=await post(`api/device/${addr}/pb/${inst}/events`,{mask}); toast("Events set (0x"+mask.toString(16)+")"); }
+  catch(e){toast(e.message);}
+}
 
 // ---- Memory Bank Tool (read/write device memory banks, like Cockpit) ----
 function memCard(addr, isDev){

@@ -51,6 +51,10 @@ class DaliWebServer:
         # Memory bank tool
         app.router.add_get("/api/memory", self.api_memory_read)
         app.router.add_post("/api/memory/write", self.api_memory_write)
+        # DALI-2 push-button instance config (Part 301)
+        app.router.add_get("/api/device/{addr}/pb/{instance}", self.api_pb_read)
+        app.router.add_post("/api/device/{addr}/pb/{instance}/timer", self.api_pb_timer)
+        app.router.add_post("/api/device/{addr}/pb/{instance}/events", self.api_pb_events)
         app.router.add_static("/static/", STATIC_DIR)
         return app
 
@@ -212,4 +216,31 @@ class DaliWebServer:
             return _json(res)
         except Exception as err:  # noqa: BLE001
             logger.exception("memory write failed")
+            return _json({"error": str(err)}, 500)
+
+    # ------------------------------------------------ push-button instance cfg
+    def _inst(self, request):
+        return int(request.match_info["instance"])
+
+    async def api_pb_read(self, request):
+        try:
+            return _json(await self.cfg.read_pushbutton(self._addr(request), self._inst(request)))
+        except Exception as err:  # noqa: BLE001
+            return _json({"error": str(err)}, 500)
+
+    async def api_pb_timer(self, request):
+        body = await self._body(request)
+        try:
+            return _json(await self.cfg.set_pushbutton_timer(
+                self._addr(request), self._inst(request),
+                body.get("which"), int(body.get("value", 0))))
+        except Exception as err:  # noqa: BLE001
+            return _json({"error": str(err)}, 500)
+
+    async def api_pb_events(self, request):
+        body = await self._body(request)
+        try:
+            return _json(await self.cfg.set_pushbutton_events(
+                self._addr(request), self._inst(request), int(body.get("mask", 0))))
+        except Exception as err:  # noqa: BLE001
             return _json({"error": str(err)}, 500)
