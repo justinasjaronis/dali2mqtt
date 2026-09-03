@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+
+- New: built-in **DALI Config** web UI (a small DALI-cockpit), served in the
+  Home Assistant sidebar via Ingress. Scan the bus, identify/blink gear, set
+  level, MIN/MAX/power-on/system-failure levels and fade time/rate, edit group
+  membership and scene levels, change a gear's short address, and run DALI
+  commissioning (assign new addresses or re-address all). Shares the bridge's
+  DALI driver (no bus contention).
+
 ## 1.1.0
 
 - Upgraded python-dali 0.9 -> 0.11 (adds DALI-2 control device / push-button

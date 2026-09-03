@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DALI Config</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#fff; --line:#e2e5ea; --ink:#1c2733; --muted:#6b7684;
+    --accent:#0a7cff; --accent-ink:#fff; --warn:#c0392b; --ok:#1e8e5a; --chip:#eef2f7;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#12151a; --panel:#1b1f27; --line:#2b313c; --ink:#e6eaf0; --muted:#93a0b0;
+           --accent:#3a9bff; --chip:#232a34; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+  header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+  header h1{font-size:16px;margin:0 8px 0 0;font-weight:650}
+  button{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:6px 12px;border-radius:8px;cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+  button.warn{color:var(--warn);border-color:var(--warn)}
+  button:disabled{opacity:.5;cursor:default}
+  .layout{display:grid;grid-template-columns:260px 1fr;gap:0;height:calc(100vh - 53px)}
+  @media(max-width:720px){.layout{grid-template-columns:1fr;height:auto}}
+  .list{border-right:1px solid var(--line);overflow:auto;background:var(--panel)}
+  .row{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+  .row:hover{background:var(--chip)}
+  .row.sel{background:var(--chip);border-left:3px solid var(--accent);padding-left:9px}
+  .row .a{font-weight:650}
+  .row .lvl{font-size:12px;color:var(--muted)}
+  .detail{padding:16px;overflow:auto}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+  .card h2{font-size:14px;margin:0 0 10px;font-weight:650}
+  .field{display:flex;align-items:center;gap:10px;margin:8px 0}
+  .field label{width:150px;color:var(--muted)}
+  .field input[type=number]{width:90px;padding:5px 7px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink)}
+  .field input[type=range]{flex:1}
+  .grp{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;max-width:420px}
+  .grp label{display:flex;flex-direction:column;align-items:center;font-size:11px;color:var(--muted);gap:2px}
+  .scenes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;max-width:520px}
+  .scene{border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+  .scene .n{font-size:11px;color:var(--muted)}
+  .scene input{width:100%;padding:4px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+  .cmds{display:flex;flex-wrap:wrap;gap:6px}
+  .muted{color:var(--muted)}
+  #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:8px;opacity:0;transition:.25s;pointer-events:none}
+  #toast.show{opacity:.95}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--muted);border-top-color:transparent;border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px}
+  @keyframes s{to{transform:rotate(360deg)}}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1>⬤ DALI Config</h1>
+  <button class="primary" id="btnScan" onclick="scan()">Scan bus</button>
+  <button onclick="reinit()" title="Refresh Home Assistant MQTT entities">Refresh HA entities</button>
+  <span style="flex:1"></span>
+  <button onclick="commission(false)" title="Assign addresses to new/unaddressed gear">Commission (new)</button>
+  <button class="warn" onclick="commission(true)" title="Clear and re-assign ALL addresses">Re-address all…</button>
+</header>
+
+<div class="layout">
+  <div class="list" id="list"><div class="empty">Press <b>Scan bus</b> to discover devices.</div></div>
+  <div class="detail" id="detail"><div class="empty">No device selected.</div></div>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let GEAR = [];        // scan results
+let SEL = null;       // selected address
+
+// Ingress-safe: use RELATIVE URLs so they resolve against the ingress base
+// path (HA serves the add-on at /api/hassio_ingress/<token>/ with a trailing
+// slash, so "api/scan" -> .../<token>/api/scan).
+async function api(path, opts){
+  const r = await fetch(path.replace(/^\//,""), opts);
+  if(!r.ok){ let e; try{e=(await r.json()).error}catch(_){}; throw new Error(e||("HTTP "+r.status)); }
+  return r.json();
+}
+function post(path, body){ return api(path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body||{})}); }
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1800); }
+
+async function scan(){
+  const b=$("#btnScan"); b.disabled=true; b.innerHTML='<span class="spin"></span> Scanning…';
+  $("#list").innerHTML='<div class="empty"><span class="spin"></span> Scanning bus…</div>';
+  try{
+    const d = await api("api/scan");
+    GEAR = d.gear||[];
+    renderList();
+    if(GEAR.length && SEL===null) select(GEAR[0].address);
+    else if(SEL!==null) select(SEL);
+    toast("Found "+GEAR.length+" control gear");
+  }catch(e){ $("#list").innerHTML='<div class="empty">Scan failed: '+e.message+'</div>'; }
+  finally{ b.disabled=false; b.textContent="Scan bus"; }
+}
+
+function renderList(){
+  if(!GEAR.length){ $("#list").innerHTML='<div class="empty">No control gear found.</div>'; return; }
+  $("#list").innerHTML = GEAR.map(g=>`
+    <div class="row ${g.address===SEL?'sel':''}" onclick="select(${g.address})">
+      <span class="a">A${g.address}</span>
+      <span class="lvl">lvl ${g.level??'–'} · grp ${g.groups.length?g.groups.join(','):'–'}</span>
+    </div>`).join("");
+}
+
+function gearOf(a){ return GEAR.find(g=>g.address===a); }
+
+function select(a){
+  SEL=a; renderList();
+  const g=gearOf(a); if(!g){ return; }
+  const groupBoxes = Array.from({length:16},(_,i)=>`
+    <label>${i}<input type="checkbox" ${g.groups.includes(i)?'checked':''} onchange="toggleGroup(${a},${i},this.checked)"></label>`).join("");
+  const cfgRow=(label,field,val)=>`
+    <div class="field"><label>${label}</label>
+      <input type="number" id="f_${field}" value="${val??''}" min="0" max="254">
+      <button onclick="setField(${a},'${field}')">Set</button></div>`;
+  $("#detail").innerHTML=`
+    <div class="card">
+      <h2>Control gear · short address A${a}</h2>
+      <div class="field"><label>Actual level (0–254)</label>
+        <input type="range" min="0" max="254" value="${g.level||0}" oninput="lvlOut.value=this.value" onchange="setLevel(${a},this.value)">
+        <output id="lvlOut">${g.level||0}</output></div>
+      <div class="cmds">
+        <button onclick="setLevel(${a},254)">Max</button>
+        <button onclick="setLevel(${a},0)">Off</button>
+        <button onclick="identify(${a})">🔦 Identify</button>
+        <span class="muted">phys.min ${g.physical_min??'–'} · type ${g.device_type??'–'}</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Parameters</h2>
+      ${cfgRow('MIN level','min_level',g.min_level)}
+      ${cfgRow('MAX level','max_level',g.max_level)}
+      ${cfgRow('Power-on level','power_on_level',g.power_on_level)}
+      ${cfgRow('System-failure level','system_failure_level',g.system_failure_level)}
+      ${cfgRow('Fade time (0–15)','fade_time','')}
+      ${cfgRow('Fade rate (1–15)','fade_rate','')}
+    </div>
+
+    <div class="card">
+      <h2>Groups</h2>
+      <div class="grp">${groupBoxes}</div>
+    </div>
+
+    <div class="card">
+      <h2>Scenes</h2>
+      <div id="scenes" class="muted">Loading…</div>
+    </div>
+
+    <div class="card">
+      <h2>Change short address</h2>
+      <div class="field"><label>New address (0–63)</label>
+        <input type="number" id="newAddr" min="0" max="63" value="${a}">
+        <button class="warn" onclick="changeAddr(${a})">Change</button></div>
+      <div class="muted">Re-addressing changes how this fixture is referenced everywhere.</div>
+    </div>`;
+  loadScenes(a);
+}
+
+async function setLevel(a,v){ try{ await post(`api/gear/${a}/level`,{level:+v}); (gearOf(a)||{}).level=+v; }catch(e){toast(e.message);} }
+async function setField(a,field){
+  const v=+$("#f_"+field).value;
+  try{ await post(`api/gear/${a}/set`,{field,value:v}); toast(field+" set to "+v);
+       const g=gearOf(a); if(g&&field in g) g[field]=v; }catch(e){toast(e.message);}
+}
+async function identify(a){ try{ await post(`api/gear/${a}/identify`); toast("Blinking A"+a); }catch(e){toast(e.message);} }
+async function toggleGroup(a,grp,on){
+  try{ await post(`api/gear/${a}/group`,{group:grp,action:on?'add':'remove'});
+    const g=gearOf(a); if(g){ g.groups = on?[...new Set([...g.groups,grp])]:g.groups.filter(x=>x!==grp); renderList(); }
+  }catch(e){toast(e.message);}
+}
+async function loadScenes(a){
+  try{ const s=await api(`api/gear/${a}/scenes`);
+    const cells=Array.from({length:16},(_,i)=>`
+      <div class="scene"><div class="n">Scene ${i}</div>
+        <input type="number" min="0" max="254" placeholder="—" value="${s[i]??''}"
+          onchange="setScene(${a},${i},this.value)"></div>`).join("");
+    $("#scenes").innerHTML='<div class="scenes">'+cells+'</div>';
+  }catch(e){ $("#scenes").textContent="Failed: "+e.message; }
+}
+async function setScene(a,scene,v){
+  try{
+    if(v===''){ await post(`api/gear/${a}/scene`,{scene,clear:true}); toast("Scene "+scene+" cleared"); }
+    else { await post(`api/gear/${a}/scene`,{scene,level:+v}); toast("Scene "+scene+" = "+v); }
+  }catch(e){toast(e.message);}
+}
+async function changeAddr(a){
+  const n=+$("#newAddr").value;
+  if(n===a) return;
+  if(!confirm(`Change short address A${a} → A${n}?`)) return;
+  try{ const r=await post(`api/gear/${a}/address`,{new:n});
+    toast("Address changed (verify "+r.verify+"). Rescanning…"); SEL=n; await scan();
+  }catch(e){toast(e.message);}
+}
+async function commission(readdress){
+  const msg = readdress
+    ? "RE-ADDRESS ALL: clears every short address and re-assigns them. Existing HA entities/automations referencing addresses will change. Continue?"
+    : "Commission new gear: assign addresses to currently unaddressed control gear. Continue?";
+  if(!confirm(msg)) return;
+  toast("Commissioning… this can take a while");
+  try{ await post("api/commission",{readdress}); toast("Commissioning done. Rescanning…"); await scan(); }
+  catch(e){ toast("Commission failed: "+e.message); }
+}
+async function reinit(){ try{ await post("api/reinit"); toast("HA entities refreshed"); }catch(e){toast(e.message);} }
+
+// auto-scan on load
+scan();
+</script>
+</body>
+</html>

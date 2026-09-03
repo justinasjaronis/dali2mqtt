@@ -27,6 +27,19 @@ from .lamp import Lamp
 logging.basicConfig(format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
+# Shared runtime references so the config web UI can refresh MQTT discovery.
+_runtime = {}
+
+
+async def reinit_discovery():
+    """Re-scan the DALI bus and refresh Home Assistant MQTT discovery."""
+    data_object = _runtime.get("data")
+    client = _runtime.get("client")
+    if data_object is None or client is None:
+        logger.warning("Cannot reinit: bridge not connected yet")
+        return
+    await initialize_lamps(data_object, client)
+
 
 class _SelectorEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
     """Force a SelectSelector loop (required by some DALI HID drivers)."""
@@ -293,6 +306,9 @@ async def on_connect(client, data_object, flags, result):  # pylint: disable=W06
     await start_listening_on_dali(data_object)
     await initialize_lamps(data_object, client)
     await register_bridge(client)
+    # Expose runtime refs to the config web UI (for discovery refresh).
+    _runtime["data"] = data_object
+    _runtime["client"] = client
     await asyncio.create_task(process_queue(client, data_object))
 
 
@@ -552,5 +568,16 @@ def main(args):
     )
 
     asyncio.ensure_future(create_mqtt_client(dali_driver, mirror))
+
+    # Start the DALI config web UI (Home Assistant Ingress). Optional: if
+    # aiohttp is unavailable the bridge still runs without the UI.
+    try:
+        from .webserver import DaliWebServer
+
+        web = DaliWebServer(dali_driver, config, reinit=reinit_discovery, port=8099)
+        asyncio.ensure_future(web.start())
+    except Exception as err:  # noqa: BLE001
+        logger.error("Config web UI not started: %s", err)
+
     event_loop.run_forever()
     logger.info("Shutting down")
