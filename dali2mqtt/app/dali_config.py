@@ -30,10 +30,16 @@ def _val(resp):
         return None
     if v is None:
         return None
+    # Some responses expose the raw frame; prefer its integer form.
+    if hasattr(v, "as_integer"):
+        try:
+            return int(v.as_integer)
+        except Exception:
+            return None
     try:
         return int(v)
     except (TypeError, ValueError):
-        return v
+        return None
 
 
 class DaliConfig:
@@ -102,10 +108,8 @@ class DaliConfig:
 
     async def _read_groups(self, short):
         groups = []
-        low = await self._q(gear.QueryGroupsZeroToSeven(short))
-        high = await self._q(gear.QueryGroupsEightToFifteen(short))
-        low = _val(low) or 0
-        high = _val(high) or 0
+        low = _val(await self._q(gear.QueryGroupsZeroToSeven(short))) or 0
+        high = _val(await self._q(gear.QueryGroupsEightToFifteen(short))) or 0
         for i in range(8):
             if low & (1 << i):
                 groups.append(i)
