@@ -1,0 +1,47 @@
+---
+configuration:
+  dali_driver:
+    name: DALI driver
+    description: Which DALI hardware driver to use.
+  dali_device:
+    name: DALI device
+    description: Device path or glob for USB drivers (e.g. /dev/dali/daliusb-* or /dev/hidraw0).
+  dali_lamps:
+    name: Number of lamps
+    description: Maximum number of lamps to scan on the bus.
+  dali_server_host:
+    name: daliserver host
+    description: Hostname of the daliserver (only for the dali_server driver).
+  dali_server_port:
+    name: daliserver port
+    description: Port of the daliserver.
+  mqtt_base_topic:
+    name: MQTT base topic
+    description: Base topic used for all MQTT messages.
+  ha_discovery_prefix:
+    name: Discovery prefix
+    description: Home Assistant MQTT discovery prefix.
+  group_mode:
+    name: Group mode
+    description: How a group brightness level is derived from its lamps.
+  log_level:
+    name: Log level
+    description: Verbosity of the add-on log.
+  log_color:
+    name: Colored log
+    description: Colorize warning and error log lines.
+  mqtt_host:
+    name: MQTT host (override)
+    description: Leave empty to auto-detect the Home Assistant MQTT service.
+  mqtt_port:
+    name: MQTT port (override)
+    description: Manual MQTT port.
+  mqtt_username:
+    name: MQTT username (override)
+    description: Manual MQTT username.
+  mqtt_password:
+    name: MQTT password (override)
+    description: Manual MQTT password.
+  switch_map:
+    name: Switch map
+    description: Mirror physical DALI switch presses onto Home Assistant entities.

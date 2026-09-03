@@ -1,102 +1,55 @@
+# DALI2MQTT — Home Assistant add-on
 
-# dali2mqtt
-DALI <-> MQTT bridge
-# <ins>This is a fork of [dali2mqtt](https://github.com/dgomes/dali2mqtt) from [dgomes.](https://github.com/dgomes) </ins>
+DALI ↔ MQTT bridge with Home Assistant MQTT discovery, packaged as an
+installable Home Assistant add-on. Fork of
+[dali2mqtt](https://github.com/dgomes/dali2mqtt) by
+[dgomes](https://github.com/dgomes).
 
+## Install
 
+1. Home Assistant → **Settings → Add-ons → Add-on Store**.
+2. **⋮ → Repositories** → add this repository URL:
+   `https://github.com/justinasjaronis/dali2mqtt`
+3. Install **DALI2MQTT**, set the options, start it.
 
-## About
+Full documentation and every option is in [dali2mqtt/DOCS.md](dali2mqtt/DOCS.md).
 
-This daemon is inspired in [zigbee2mqtt](https://github.com/Koenkk/zigbee2mqtt) and provides the means to integrate a DALI light controller into your Home Assistant setup.
+## What this fork changed
 
-## Supported Devices
+The original was a single-host script with credentials and site-specific data
+hard-coded in source. This version is a clean, installable add-on:
 
-This daemon relies in [python-dali](https://github.com/sde1000/python-dali) so all devices supported by this library should also be supported by dali2mqtt.
+- **No secrets in the tree.** MQTT broker is auto-discovered from the Home
+  Assistant MQTT service (manual override available); the Home Assistant REST
+  API uses the Supervisor proxy + token.
+- **Everything is configurable** via add-on options: driver, device path, lamp
+  count, group mode, discovery prefix, logging, and the physical-switch map.
+- **`switch_map`** replaces the hard-coded `DEVICE_TO_ENTITY_MAP`: mirror
+  physical DALI switch presses onto Home Assistant entities from configuration.
+- Assorted bug fixes (async flash, group `asyncio` import, `Config.__contains__`,
+  broadcast handling) and the removal of the `fuzzywuzzy` dependency.
 
-## How to use
+## Repository layout
 
-### Create a Virtual Environment (recommended) and install the requirements
+```
+repository.yaml          # Home Assistant add-on repository descriptor
+dali2mqtt/               # the add-on
+  config.yaml            # add-on manifest (options + schema)
+  build.yaml             # base images per architecture
+  Dockerfile
+  run.sh                 # bashio entrypoint (MQTT auto-discovery, config build)
+  requirements.txt
+  DOCS.md
+  app/                   # the Python application (run standalone with `python -m app`)
+example/                 # udev rule + systemd unit for standalone (non-add-on) use
+```
+
+## Running standalone (without the add-on)
+
 ```bash
-python3 -m venv venv
-source venv/bin/activate
+cd dali2mqtt
+python3 -m venv venv && . venv/bin/activate
 pip install -r requirements.txt
+# Use a config path that does not clash with the add-on manifest (config.yaml):
+python3 -m app --config ~/dali2mqtt.yaml    # creates an example config on first run
 ```
-
-### Create a configuration file
-You can create a configuration file when you call the daemon the first time
-
-```bash
-venv/bin/python3 ./main.py
-```
-
-Then just edit the file accordingly. You can also create the file with the right values, by using the arguments of dali_mqtt_daemon.py:
-
-```
-  --config CONFIG       configuration file
-  --devices-names DEVICES_NAMES
-                        devices names file
-  --mqtt-server MQTT_SERVER
-                        MQTT server
-  --mqtt-port MQTT_PORT
-                        MQTT port
-  --mqtt-username MQTT_USERNAME
-                        MQTT username
-  --mqtt-password MQTT_PASSWORD
-                        MQTT password
-  --mqtt-base-topic MQTT_BASE_TOPIC
-                        MQTT base topic
-  --dali-driver {hasseb,tridonic,dali_server}
-                        DALI device driver
-  --dali-lamps DALI_LAMPS
-                        Number of lamps to scan                        
-  --ha-discovery-prefix HA_DISCOVERY_PREFIX
-                        HA discovery mqtt prefix
-  --log-level {critical,error,warning,info,debug}
-                        Log level
-  --log-color           Coloring output
-  
-  --group-mode {mean,max,min,off}
-                        How the light level of a group is set when the level some lamps of the is changed   
-
-```
-
-### Devices friendly names
-Default all lamps will be displayed in Home Assistant by short address, numbers from 0 to 63
-You can give lamps special names to help you identify lamps by name. On the first execution, `devices.yaml` file will be create with all lamps available.
-Example `devices.yaml`:
-```yaml
-0: 
-  "friendly_name": "Lamp in kitchen"
-8:
-  "friendly_name": "Lamp in bathroom"
-```
-Please note that MQTT topics support a minimum set of characters, therefore friendly names are converted to slug strings, so a lamp with address 0 (as an example) in MQTT will be named "lamp-in-kitchen"
-
-### Setup systemd
-edit dali2mqtt.service and change the path of python3 to the path of your venv, after:
-
-```bash
-sudo cp dali2mqtt.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable dali2mqtt.service 
-```
-
-### Give your user permissions to access the USB device
-```bash
-sudo adduser homeassistant plugdev 
-cp 50-hasseb.rules /etc/udev/rules.d/
-```
-You might need to reboot your device after the last change.
-
-In this example the user is **homeassistant**
-
-### Check everything is OK
-```bash
-sudo systemctl start dali2mqtt.service 
-sudo systemctl status dali2mqtt.service 
-```
-
-### Command line arguments and configuration file
-
-When the daemon first runs, it creates a default `config.yaml` file.
-You can edit the file to customize your setup.

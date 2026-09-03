@@ -1,7 +1,7 @@
 """Class to represent dali lamps"""
 import json
-import time
-
+import asyncio
+from pprint import pformat
 import dali.gear.general as gear
 
 from .config import Config
@@ -21,6 +21,7 @@ class Lamp:
 
         self.driver = driver
         self.mqtt = mqtt
+        self.virtual = True #DevicesNamesConfig().get_virtual(f"DALI Lamp {self.address}")
         self.dali_lamp = dali_lamp
         self.address = dali_lamp.address
 
@@ -28,21 +29,26 @@ class Lamp:
         self.device_name = f"lamp_{self.address}"
 
         self.current_scene = None
+
+
+    async def read_current_state(self):
         _scenes = []
         for i in range(0, 16):
-            v = driver.send(gear.QuerySceneLevel(self.dali_lamp, i)).value
+            v = (await self.driver.send(gear.QuerySceneLevel(self.dali_lamp, i))).value
             _scenes.append(v)
         self.scenes = _scenes
         logger.debug(f"Scenes: {json.dumps(self.scenes)}")
 
         self.groups = []
-
-        self.min_physical_level = self.driver.send(gear.QueryPhysicalMinimum(self.dali_lamp)).value
-        self.min_level = self.driver.send(gear.QueryMinLevel(self.dali_lamp)).value
+        self.min_physical_level = (await self.driver.send(gear.QueryPhysicalMinimum(self.dali_lamp))).value
+        self.min_level = (await self.driver.send(gear.QueryMinLevel(self.dali_lamp))).value
         self.min_levels = max(self.min_physical_level, self.min_level)
-        self.max_level = self.driver.send(gear.QueryMaxLevel(self.dali_lamp)).value
+        self.max_level = 254
+#        await self.driver.send(gear.DAPC(self.dali_lamp, 254))
+#        await self.driver.send(gear.SetMaxLevel(self.dali_lamp))
+#(await self.driver.send(gear.QueryMaxLevel(self.dali_lamp))).value
 
-        self._getLevelDALI()
+        await self._getLevelDALI()
         self._register_discovery()
         self.setSceneToNoneMQTT()
 
@@ -64,6 +70,19 @@ class Lamp:
             self.max_level,
             self.min_physical_level,
         )
+
+    def send_brightness_to_mqtt(self, level):
+        self.mqtt.publish(
+            MQTT_BRIGHTNESS_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
+            level,
+            retain=True,
+        )
+        self.mqtt.publish(
+            MQTT_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
+            MQTT_PAYLOAD_ON if level > 0 else MQTT_PAYLOAD_OFF,
+            retain=True,
+        )
+
 
     def __repr__(self):
         return f"LAMP A{self.address}"
@@ -102,6 +121,7 @@ class Lamp:
                 "connections": [("DALI", f"A{self.address}")]
             },
         }
+        
         self.mqtt.publish(
             HA_DISCOVERY_PREFIX_LIGHT.format(self.config[CONF_HA_DISCOVERY_PREFIX], self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
             json.dumps(json_config),
@@ -137,9 +157,9 @@ class Lamp:
             HA_DISCOVERY_PREFIX_SELECT.format(self.config[CONF_HA_DISCOVERY_PREFIX], self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
             json.dumps(json_config),
             retain=True,
-        )
+        )   
 
-    def setLevel(self, level, dali=True):
+    async def setLevel(self, level, dali=True):
         if self.level == level:
             return
         old = self.level
@@ -148,11 +168,11 @@ class Lamp:
         if dali:
             for _x in self.groups:
                 _x.recalc_level()
-            self._sendLevelDALI(level)
+            await self._sendLevelDALI(level)
 
         self._sendLevelMQTT(level, old)
 
-    def setScene(self, scene, dali=True):
+    async def setScene(self, scene, dali=True):
         self.setSceneToNoneMQTT()
         if 0 <= scene <= 15 and self.scenes[scene] != "MASK":
             level = self.scenes[scene]
@@ -189,9 +209,9 @@ class Lamp:
         self.mqtt.publish(
             MQTT_SCENE_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name), "-", retain=True)
 
-    def pollLevel(self):
+    async def pollLevel(self):
         old = self.level
-        self._getLevelDALI()
+        await self._getLevelDALI()
         if old != self.level:
             self.mqtt.publish(
                 MQTT_BRIGHTNESS_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name),
@@ -204,32 +224,38 @@ class Lamp:
                 retain=True,
             )
 
-    def _sendLevelDALI(self, level):
-        level = normalize(level, 0, 255, self.min_levels, self.max_level)
-        self.driver.send(gear.DAPC(self.dali_lamp, level))
+    async def _sendLevelDALI(self, level):
+        orig_level = level
+        level = normalize(level, 0, 255, self.min_levels, 254)
+#        level = 254
+        if orig_level == 0 or orig_level =='OFF':
+#            await self.driver.send(gear.Off(self.dali_lamp))
+            await self.driver.send(gear.DAPC(self.dali_lamp, 0))
+        else:
+            await self.driver.send(gear.DAPC(self.dali_lamp, level))
         logger.info(f"Set {self.friendly_name} brightness level to {self.level} ({level})")
 
-    def _sendSceneDALI(self, scene):
-        self.driver.send(gear.GoToScene(self.dali_lamp, scene))
+    async def _sendSceneDALI(self, scene):
+        await self.driver.send(gear.GoToScene(self.dali_lamp, scene))
         logger.info(f"Call scene {scene} on {self.friendly_name}")
 
-    def _getLevelDALI(self):
-        level = self.driver.send(gear.QueryActualLevel(self.dali_lamp)).value
+    async def _getLevelDALI(self):
+        level = (await self.driver.send(gear.QueryActualLevel(self.dali_lamp))).value
         if level == 0:
             self.level = 0
         else:
-            self.level = normalize(level, self.min_levels, self.max_level, 0, 255)
+            self.level = normalize(level, self.min_levels, 254, 0, 255)
         logger.debug(f"Get {self.friendly_name} brightness level {self.level} ({level})")
 
-    def flash(self, count, speed):
+    async def flash(self, count, speed):
         logger.info(f"Flash lamp {self.friendly_name}: Count: {count}, Speed {speed}")
         for n in range(count):
-            self.driver.send(gear.RecallMaxLevel(self.dali_lamp))
-            time.sleep(speed)
-            self.driver.send(gear.RecallMinLevel(self.dali_lamp))
-            time.sleep(speed)
+            await self.driver.send(gear.RecallMaxLevel(self.dali_lamp))
+            await asyncio.sleep(speed)
+            await self.driver.send(gear.RecallMinLevel(self.dali_lamp))
+            await asyncio.sleep(speed)
 
         if self.level >= 127:
-            self.driver.send(gear.RecallMaxLevel(self.dali_lamp))
+            await self.driver.send(gear.RecallMaxLevel(self.dali_lamp))
 
-        self._sendLevelDALI(self.level)
+        await self._sendLevelDALI(self.level)

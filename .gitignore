@@ -112,3 +112,11 @@ venv.bak/
 
 # Testfiles
 /test?.py
+
+# --- dali2mqtt runtime / local config ---
+/data/
+dali2mqtt/data/
+*.runtime.json
+devices.yaml
+# standalone app config (never commit credentials)
+dali2mqtt.yaml

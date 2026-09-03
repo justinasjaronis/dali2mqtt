@@ -65,7 +65,8 @@ class DevicesNamesConfig:
         try:
             for lamp_object in all_lamps:
                 self._devices_names[lamp_object.device_name] = {
-                    "friendly_name": str(lamp_object.friendly_name)
+                    "friendly_name": str(lamp_object.friendly_name),
+                    #"virtual": bool(lamp_object.virtual)
                 }
 
             with open(self._path, "w") as outfile:

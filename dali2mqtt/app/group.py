@@ -1,7 +1,7 @@
 """Class to represent dali groups"""
 import json
+import asyncio
 import math
-import time
 from statistics import mean
 
 import dali.gear.general as gear
@@ -33,7 +33,7 @@ class Group:
         self.level = None
         self.recalc_level()
         self.min_levels = min(x.min_levels for x in self.lamps)
-        self.max_level = max(x.max_level for x in self.lamps)
+        self.max_level = 254 #max(x.max_level for x in self.lamps)
 
         self.current_scene = None
         self.scenes = set()
@@ -154,14 +154,14 @@ class Group:
             retain=True,
         )
 
-    def setLevel(self, level):
+    async def setLevel(self, level):
         old = self.level
         self.level = level
-        self._sendLevelDALI(level)
+        await self._sendLevelDALI(level)
 
         affected_groups = set()
         for lamp in self.lamps:
-            lamp.setLevel(level, False)
+            await lamp.setLevel(level, False)
             affected_groups.update(lamp.groups)
 
         for _x in affected_groups:
@@ -169,11 +169,11 @@ class Group:
 
         self._sendLevelMQTT(level, old)
 
-    def setScene(self, scene):
+    async def setScene(self, scene):
         self.setSceneToNoneMQTT()
         if 0 <= scene <= 15 and scene in self.scenes:
             old = self.level
-            self._sendSceneDALI(scene)
+            await self._sendSceneDALI(scene)
             self.mqtt.publish(
                 MQTT_SCENE_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name), f"Scene {scene}",
                 retain=True)
@@ -181,7 +181,7 @@ class Group:
 
             affected_groups = set()
             for lamp in self.lamps:
-                lamp.setScene(scene, False)
+                await lamp.setScene(scene, False)
                 affected_groups.update(lamp.groups)
 
             for _x in affected_groups:
@@ -206,25 +206,27 @@ class Group:
         self.mqtt.publish(
             MQTT_SCENE_STATE_TOPIC.format(self.config[CONF_MQTT_BASE_TOPIC], self.device_name), "-", retain=True)
 
-    def _sendLevelDALI(self, level):
+    async def _sendLevelDALI(self, level):
         if level != 0:
-            level = normalize(level, 0, 255, self.min_levels, self.max_level)
-        self.driver.send(gear.DAPC(self.dali_group, level))
-        logger.info(f"Set {self.friendly_name} brightness level to {self.level} ({level})")
+            level = normalize(level, 0, 255, self.min_levels, 254)
+        await self.driver.send(gear.DAPC(self.dali_group, level))
+        from pprint import pformat
+        pfcontent = pformat(self.dali_group)
+        logger.info(f"Set {self.friendly_name} brightness level to {self.level} ({level}) - {pfcontent}")
 
-    def _sendSceneDALI(self, scene):
-        self.driver.send(gear.GoToScene(self.dali_group, scene))
+    async def _sendSceneDALI(self, scene):
+        await self.driver.send(gear.GoToScene(self.dali_group, scene))
         logger.info(f"Call scene {scene} on {self.friendly_name}")
 
-    def flash(self, count, speed):
+    async def flash(self, count, speed):
         logger.info(f"Flash group {self.friendly_name}: Count: {count}, Speed {speed}")
         for n in range(count):
-            self.driver.send(gear.RecallMaxLevel(self.dali_group))
-            time.sleep(speed)
-            self.driver.send(gear.RecallMinLevel(self.dali_group))
-            time.sleep(speed)
+            await self.driver.send(gear.RecallMaxLevel(self.dali_group))
+            await asyncio.sleep(speed)
+            await self.driver.send(gear.RecallMinLevel(self.dali_group))
+            await asyncio.sleep(speed)
 
         if self.level >= 127:
-            self.driver.send(gear.RecallMaxLevel(self.dali_group))
+            await self.driver.send(gear.RecallMaxLevel(self.dali_group))
 
-        self._sendLevelDALI(self.level)
+        await self._sendLevelDALI(self.level)
