@@ -58,6 +58,7 @@
   <button class="primary" id="btnScan" onclick="scan()">Scan bus</button>
   <button id="btnScanDev" onclick="scanDevices()" title="Scan DALI-2 control devices (buttons/sensors)">Scan devices</button>
   <button id="btnMon" onclick="toggleMonitor()" title="Watch live bus traffic — press a button to see what it sends (finds DALI-1 switches)">🔎 Bus monitor</button>
+  <button id="btnSwitches" onclick="openSwitches()" title="Map physical DALI switches to Home Assistant entities">⚙ Switches</button>
   <button onclick="reinit()" title="Refresh Home Assistant MQTT entities">Refresh HA entities</button>
   <span style="flex:1"></span>
   <button onclick="commission(false)" title="Assign addresses to new/unaddressed gear">Commission (new)</button>
@@ -433,6 +434,75 @@ async function pollMonitor(){
     if(monEvents.length>2000) monEvents=monEvents.slice(-2000);
     renderMonitor();
   }catch(e){ const s=$("#monStat"); if(s) s.textContent="error: "+e.message; }
+}
+
+// ---- Switch mapping configurator (physical DALI switch -> HA entity) ----
+let ENTITIES = [];
+async function openSwitches(){
+  if(monOn) stopMonitor();
+  SEL=null; SELDEV=null; renderList();
+  $("#detail").innerHTML='<div class="card"><span class="spin"></span> Loading switch mapping…</div>';
+  try{
+    const [sm, ents] = await Promise.all([ api("api/switch_map"), api("api/ha_entities") ]);
+    ENTITIES = ents.entities||[];
+    renderSwitches(sm.switch_map||[]);
+  }catch(e){ $("#detail").innerHTML='<div class="card">Failed: '+e.message+'</div>'; }
+}
+function smRow(a, entities){
+  const val = (entities||[]).join(", ");
+  return `<div class="field sm-row" style="flex-wrap:wrap;gap:8px;align-items:center">
+      <label style="width:auto">Address</label>
+      <input type="number" class="sm-addr" min="0" max="63" value="${a??''}" style="width:70px">
+      <button onclick="smLearn(this)" title="Press the physical switch, then click">🎯 Learn</button>
+      <label style="width:auto">Entities</label>
+      <input type="text" class="sm-ents" list="entlist" value="${val}" placeholder="e.g. dining, facade1" style="flex:1;min-width:180px">
+      <button class="warn" onclick="this.closest('.sm-row').remove()">✕</button>
+    </div>`;
+}
+function renderSwitches(map){
+  const opts = ENTITIES.map(e=>`<option value="${e.name}">${e.id}</option>`).join("");
+  $("#detail").innerHTML=`
+    <div class="card">
+      <h2>Switch mapping <span class="muted" style="font-weight:400">— physical DALI switch → HA entity</span></h2>
+      <div class="muted">Each physical switch sends a DALI command to an <b>address</b>. Map that
+        address to one or more Home Assistant entities (by name or entity_id). RecallMaxLevel
+        turns them on, Off turns them off; brightness-capable lights follow the level.
+        Use <b>🎯 Learn</b>: press the physical switch, then click Learn to fill its address.</div>
+      <datalist id="entlist">${opts}</datalist>
+      <div id="smRows" style="margin:12px 0">${(map.length?map:[]).map(m=>smRow(m.address,m.entities)).join("")}</div>
+      <div class="cmds">
+        <button onclick="document.getElementById('smRows').insertAdjacentHTML('beforeend', smRow('', []))">+ Add mapping</button>
+        <button class="primary" onclick="smSave()">Save</button>
+        <span id="smStat" class="muted"></span>
+      </div>
+      <div class="muted" style="margin-top:8px">${ENTITIES.length} HA entities available for autocomplete.</div>
+    </div>`;
+}
+async function smLearn(btn){
+  const row = btn.closest('.sm-row');
+  btn.disabled=true; const old=btn.textContent; btn.textContent='…';
+  try{
+    const d = await api("api/learn");
+    const addrs = d.addresses||[];
+    if(addrs.length){ row.querySelector('.sm-addr').value = addrs[0]; toast("Learned address "+addrs[0]+(addrs.length>1?" (also seen: "+addrs.slice(1).join(', ')+")":"")); }
+    else toast("No switch command seen yet — press the switch first");
+  }catch(e){ toast(e.message); }
+  finally{ btn.disabled=false; btn.textContent=old; }
+}
+async function smSave(){
+  const rows=[...document.querySelectorAll('#smRows .sm-row')];
+  const map=[];
+  for(const r of rows){
+    const a=r.querySelector('.sm-addr').value;
+    const ents=r.querySelector('.sm-ents').value.split(',').map(x=>x.trim()).filter(Boolean);
+    if(a!=='' && ents.length) map.push({address:+a, entities:ents});
+  }
+  $("#smStat").textContent="Saving…";
+  try{
+    const res=await post("api/switch_map",{switch_map:map});
+    $("#smStat").textContent="Saved "+(res.count)+" mappings ✓";
+    toast("Switch mapping saved ("+res.count+")");
+  }catch(e){ $("#smStat").textContent="Failed: "+e.message; }
 }
 
 // auto-scan on load

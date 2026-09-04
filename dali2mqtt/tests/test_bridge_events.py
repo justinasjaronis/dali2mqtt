@@ -209,3 +209,37 @@ async def test_switch_dapc_dims_nonlamp(monkeypatch):
 async def test_switch_unmapped_address_ignored(monkeypatch):
     m = await _run_cmd(monkeypatch, gear.Off(address.Short(5)), mapped={20})
     assert m.set_address_calls == []
+
+
+def test_get_switch_map(monkeypatch):
+    mirror = type("M", (), {"_switch_map": {20: ["dining"], 10: ["sport room"]}})()
+    monkeypatch.setitem(bridge._runtime, "data", {"mirror": mirror})
+    sm = bridge.get_switch_map()
+    assert sm == [
+        {"address": 10, "entities": ["sport room"]},
+        {"address": 20, "entities": ["dining"]},
+    ]
+
+
+def test_save_switch_map(monkeypatch):
+    calls = {}
+    def fake_api(method, path, payload=None):
+        calls.setdefault(path, []).append((method, payload))
+        if path == "/addons/self/info":
+            return {"data": {"options": {"dali_lamps": 64}}}
+        return {"result": "ok"}
+    monkeypatch.setattr(bridge, "_supervisor_api", fake_api)
+    mirror = type("M", (), {"_switch_map": {}})()
+    monkeypatch.setitem(bridge._runtime, "data", {"mirror": mirror})
+    res = bridge.save_switch_map([
+        {"address": 20, "entities": ["dining"]},
+        {"address": 99, "entities": ["x"]},        # out of range -> dropped
+        {"address": 10, "entities": []},           # no entities -> dropped
+    ])
+    assert res["ok"] and res["count"] == 1
+    # persisted options kept dali_lamps and set switch_map
+    posted = calls["/addons/self/options"][0][1]["options"]
+    assert posted["dali_lamps"] == 64
+    assert posted["switch_map"] == [{"address": 20, "entities": ["dining"]}]
+    # live mirror updated
+    assert mirror._switch_map == {20: ["dining"]}

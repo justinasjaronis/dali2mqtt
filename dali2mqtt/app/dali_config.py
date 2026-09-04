@@ -101,11 +101,18 @@ class DaliConfig:
     def _on_traffic(self, dev, command, response, config_command_error):
         try:
             self._mon_seq += 1
+            ctype = type(command).__name__ if command is not None else ""
+            caddr = None
+            dest = getattr(command, "destination", None)
+            if isinstance(dest, address.Short):
+                caddr = dest.address
             self._monitor.append(
                 {
                     "seq": self._mon_seq,
                     "t": time.strftime("%H:%M:%S"),
                     "cmd": str(command) if command is not None else "",
+                    "type": ctype,
+                    "address": caddr,
                     "resp": str(response) if response is not None else "",
                     "err": bool(config_command_error),
                 }
@@ -117,6 +124,19 @@ class DaliConfig:
         """Return buffered bus frames newer than ``since`` (registers on first use)."""
         self._ensure_monitor()
         return [e for e in self._monitor if e["seq"] > since]
+
+    def recent_switch_addresses(self, limit=5):
+        """Most-recent short addresses seen sending switch commands (for 'learn')."""
+        self._ensure_monitor()
+        seen = []
+        for e in reversed(self._monitor):
+            if e.get("type") in ("RecallMaxLevel", "Off") and e.get("address") is not None:
+                a = e["address"]
+                if a not in seen:
+                    seen.append(a)
+            if len(seen) >= limit:
+                break
+        return seen
 
     @contextlib.asynccontextmanager
     async def _guard(self):

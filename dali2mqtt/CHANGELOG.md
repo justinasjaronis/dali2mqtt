@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.12.0
+
+- New: **Switch mapping configurator** in the DALI Config web UI (“⚙ Switches”).
+  View/add/edit/delete physical-switch → HA-entity mappings, with a **Learn**
+  button (press the switch, it captures the address from the bus) and HA entity
+  autocomplete. Saves to the add-on `switch_map` option and applies live (no
+  restart needed).
+
 ## 1.11.0
 
 - Brightness-aware mirroring: when a mapped entity is a `light`, RecallMaxLevel

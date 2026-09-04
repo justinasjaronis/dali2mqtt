@@ -22,12 +22,16 @@ def _json(data, status=200):
 
 class DaliWebServer:
     def __init__(self, driver, config, reinit=None, busy=None, simulate=None,
-                 simulate_broadcast=None, port=8099):
+                 simulate_broadcast=None, switchmap_get=None, switchmap_save=None,
+                 ha_entities=None, port=8099):
         self.cfg = DaliConfig(driver, busy=busy)
         self.config = config
         self.reinit = reinit  # async callable to refresh MQTT discovery
         self.simulate = simulate  # sync callable(addr) -> dict, tests the HA mirror
         self.simulate_broadcast = simulate_broadcast  # sync callable(action) -> dict
+        self.switchmap_get = switchmap_get      # sync callable() -> list
+        self.switchmap_save = switchmap_save     # sync callable(list) -> dict
+        self.ha_entities = ha_entities           # sync callable() -> list
         self.port = port
         self._runner = None
 
@@ -56,6 +60,11 @@ class DaliWebServer:
         app.router.add_post("/api/memory/write", self.api_memory_write)
         app.router.add_post("/api/simulate_button/{addr}", self.api_simulate_button)
         app.router.add_post("/api/simulate_broadcast/{action}", self.api_simulate_broadcast)
+        # Switch mapping configurator
+        app.router.add_get("/api/switch_map", self.api_switchmap_get)
+        app.router.add_post("/api/switch_map", self.api_switchmap_save)
+        app.router.add_get("/api/ha_entities", self.api_ha_entities)
+        app.router.add_get("/api/learn", self.api_learn)
         # DALI-2 push-button instance config (Part 301)
         app.router.add_get("/api/device/{addr}/pb/{instance}", self.api_pb_read)
         app.router.add_post("/api/device/{addr}/pb/{instance}/timer", self.api_pb_timer)
@@ -204,6 +213,44 @@ class DaliWebServer:
             None, self.simulate_broadcast, action
         )
         return _json(res)
+
+    # ------------------------------------------------ switch mapping config
+    async def api_switchmap_get(self, request):
+        if self.switchmap_get is None:
+            return _json({"switch_map": []})
+        return _json({"switch_map": self.switchmap_get()})
+
+    async def api_switchmap_save(self, request):
+        if self.switchmap_save is None:
+            return _json({"error": "not available"}, 501)
+        body = await self._body(request)
+        entries = body.get("switch_map", [])
+        import asyncio
+
+        try:
+            res = await asyncio.get_event_loop().run_in_executor(
+                None, self.switchmap_save, entries
+            )
+            return _json(res)
+        except Exception as err:  # noqa: BLE001
+            logger.exception("switch_map save failed")
+            return _json({"error": str(err)}, 500)
+
+    async def api_ha_entities(self, request):
+        if self.ha_entities is None:
+            return _json({"entities": []})
+        import asyncio
+
+        try:
+            ents = await asyncio.get_event_loop().run_in_executor(
+                None, self.ha_entities
+            )
+            return _json({"entities": ents})
+        except Exception as err:  # noqa: BLE001
+            return _json({"error": str(err)}, 500)
+
+    async def api_learn(self, request):
+        return _json({"addresses": self.cfg.recent_switch_addresses()})
 
     async def api_monitor(self, request):
         try:

@@ -185,3 +185,15 @@ async def test_commission_runs_sequence(driver, busy):
     assert res["ok"] is True
     assert calls["busy_during"] is True
     assert not busy.is_set()
+
+
+async def test_recent_switch_addresses(driver):
+    cfg = DaliConfig(driver)
+    cfg.monitor_events(0)   # register
+    cb = driver.bus_traffic._cbs[0]
+    cb(driver, gear.RecallMaxLevel(address.Short(20)), None, False)
+    cb(driver, gear.Off(address.Short(20)), None, False)
+    cb(driver, gear.RecallMaxLevel(address.Short(10)), None, False)
+    cb(driver, gear.QueryActualLevel(address.Short(6)), None, False)  # ignored
+    addrs = cfg.recent_switch_addresses()
+    assert addrs[0] == 10 and 20 in addrs and 6 not in addrs

@@ -83,6 +83,86 @@ def simulate_broadcast(action):
     return {"ok": True, "action": action, "entities": mirror.all_entities()}
 
 
+def _supervisor_api(method, path, payload=None):
+    """Call the Supervisor API from within the add-on (needs hassio_api: true)."""
+    import os
+
+    import requests
+
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if not token:
+        raise RuntimeError("SUPERVISOR_TOKEN not available")
+    url = "http://supervisor" + path
+    headers = {"Authorization": f"Bearer {token}"}
+    if method == "get":
+        resp = requests.get(url, headers=headers, timeout=10)
+    else:
+        resp = requests.post(url, headers=headers, json=payload, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_switch_map():
+    """Return the live switch_map as [{address, entities}] (sorted)."""
+    data = _runtime.get("data")
+    mirror = data.get("mirror") if data else None
+    sm = getattr(mirror, "_switch_map", {}) if mirror else {}
+    return [
+        {"address": a, "entities": list(ents)} for a, ents in sorted(sm.items())
+    ]
+
+
+def save_switch_map(entries):
+    """Persist switch_map to the add-on options and update the live mirror.
+
+    entries: [{"address": int, "entities": [str, ...]}, ...]
+    """
+    clean = []
+    for e in entries:
+        addr = int(e["address"])
+        ents = [str(x).strip() for x in e.get("entities", []) if str(x).strip()]
+        if 0 <= addr <= 63 and ents:
+            clean.append({"address": addr, "entities": ents})
+    # Persist to add-on options (merge into the existing option set).
+    info = _supervisor_api("get", "/addons/self/info")
+    opts = dict(info.get("data", {}).get("options", {}))
+    opts["switch_map"] = clean
+    _supervisor_api("post", "/addons/self/options", {"options": opts})
+    # Apply live so no restart is needed.
+    data = _runtime.get("data")
+    mirror = data.get("mirror") if data else None
+    if mirror is not None:
+        mirror._switch_map = {e["address"]: e["entities"] for e in clean}
+    logger.info("switch_map updated (%d entries)", len(clean))
+    return {"ok": True, "count": len(clean), "switch_map": clean}
+
+
+def list_ha_entities():
+    """List controllable Home Assistant entities for the mapping picker."""
+    from .ha_client import HomeAssistantClient
+    from .ha_mirror import MIRROR_ENTITY_TYPES
+
+    data = _runtime.get("data")
+    mirror = data.get("mirror") if data else None
+    client = getattr(mirror, "_client", None) if mirror else None
+    if client is None:
+        client = HomeAssistantClient.from_config("", "")
+    if client is None:
+        return []
+    states = client._get_state()
+    out = []
+    for s in states:
+        eid = s.get("entity_id", "")
+        if eid.split(".")[0] in MIRROR_ENTITY_TYPES:
+            out.append(
+                {
+                    "id": eid,
+                    "name": s.get("attributes", {}).get("friendly_name", eid),
+                }
+            )
+    return sorted(out, key=lambda x: x["name"].lower())
+
+
 def mirror_action(command, is_lamp_addr=False):
     """Classify a DALI bus command for HA mirroring.
 
@@ -729,7 +809,9 @@ def main(args):
 
         web = DaliWebServer(
             dali_driver, config, reinit=reinit_discovery, busy=config_busy,
-            simulate=simulate_button, simulate_broadcast=simulate_broadcast, port=8099,
+            simulate=simulate_button, simulate_broadcast=simulate_broadcast,
+            switchmap_get=get_switch_map, switchmap_save=save_switch_map,
+            ha_entities=list_ha_entities, port=8099,
         )
         asyncio.ensure_future(web.start())
     except Exception as err:  # noqa: BLE001
