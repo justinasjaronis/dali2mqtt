@@ -57,12 +57,14 @@
   <h1>⬤ DALI Config</h1>
   <button class="primary" id="btnScan" onclick="scan()">Scan bus</button>
   <button id="btnScanDev" onclick="scanDevices()" title="Scan DALI-2 control devices (buttons/sensors)">Scan devices</button>
+  <button id="btnScanLuna" onclick="scanLunatone()" title="Read Lunatone config bank (bank 3) from every gear — find switches &amp; their target addresses">Scan Lunatone</button>
   <button id="btnMon" onclick="toggleMonitor()" title="Watch live bus traffic — press a button to see what it sends (finds DALI-1 switches)">🔎 Bus monitor</button>
   <button id="btnSwitches" onclick="openSwitches()" title="Map physical DALI switches to Home Assistant entities">⚙ Switches</button>
   <button onclick="reinit()" title="Refresh Home Assistant MQTT entities">Refresh HA entities</button>
   <span style="flex:1"></span>
   <button onclick="commission(false)" title="Assign addresses to new/unaddressed gear">Commission (new)</button>
-  <button class="warn" onclick="commission(true)" title="Clear and re-assign ALL addresses">Re-address all…</button>
+  <button onclick="toggleAdvanced()" title="Advanced / danger tools" style="opacity:.5">⋯</button>
+  <button id="btnReaddr" class="warn" onclick="readdressAll()" style="display:none" title="DANGER: clears and re-indexes ALL addresses">Re-address all…</button>
 </header>
 
 <div class="layout">
@@ -272,14 +274,27 @@ async function changeAddr(a){
     toast("Address changed"+(r.verified?" (verified)":"")+". Rescanning…"); SEL=n; await scan();
   }catch(e){toast(e.message);}
 }
-async function commission(readdress){
-  const msg = readdress
-    ? "RE-ADDRESS ALL: clears every short address and re-assigns them. Existing HA entities/automations referencing addresses will change. Continue?"
-    : "Commission new gear: assign addresses to currently unaddressed control gear. Continue?";
-  if(!confirm(msg)) return;
+async function commission(){
+  if(!confirm("Commission new gear: assign short addresses to currently UNADDRESSED control gear. Existing addresses are kept. Continue?")) return;
   toast("Commissioning… this can take a while");
-  try{ await post("api/commission",{readdress}); toast("Commissioning done. Rescanning…"); await scan(); }
+  try{ await post("api/commission",{readdress:false}); toast("Commissioning done. Rescanning…"); await scan(); }
   catch(e){ toast("Commission failed: "+e.message); }
+}
+function toggleAdvanced(){
+  const b=$("#btnReaddr"); b.style.display = b.style.display==='none' ? '' : 'none';
+}
+async function readdressAll(){
+  // Two gates: an explicit warning, then a typed confirmation phrase.
+  const phrase = prompt(
+    "⚠ IRREVERSIBLE — RE-ADDRESS ALL\n\n"+
+    "This CLEARS the short address of EVERY DALI device on the bus and re-indexes "+
+    "them from scratch. All light/group entities, scenes and automations that "+
+    "reference DALI addresses WILL break and must be reconfigured. This cannot be undone.\n\n"+
+    "If you are absolutely sure, type  READDRESS  (in capitals) to proceed:");
+  if(phrase !== "READDRESS"){ toast("Cancelled — nothing changed"); return; }
+  toast("Re-addressing the whole bus… this can take minutes");
+  try{ await post("api/commission",{readdress:true}); toast("Re-address done. Rescanning…"); await scan(); }
+  catch(e){ toast("Re-address failed: "+e.message); }
 }
 async function reinit(){ try{ await post("api/reinit"); toast("HA entities refreshed"); }catch(e){toast(e.message);} }
 
@@ -434,6 +449,36 @@ async function pollMonitor(){
     if(monEvents.length>2000) monEvents=monEvents.slice(-2000);
     renderMonitor();
   }catch(e){ const s=$("#monStat"); if(s) s.textContent="error: "+e.message; }
+}
+
+// ---- Lunatone config scan (read bank 3 of every gear to find switches) ----
+async function scanLunatone(){
+  const b=$("#btnScanLuna"); b.disabled=true; b.innerHTML='<span class="spin"></span> Reading…';
+  SEL=null; SELDEV=null; renderList();
+  $("#detail").innerHTML='<div class="card"><span class="spin"></span> Reading Lunatone config bank (bank 3) from all gear…</div>';
+  try{
+    const d=await api("api/scan_lunatone?bank=3&count=32");
+    const rows=(d.gear||[]).map(g=>{
+      const bytes=g.data||[];
+      const hex=bytes.map(x=>x==null?"--":x.toString(16).padStart(2,"0")).join(" ");
+      const asc=bytes.map(x=>(x!=null&&x>=32&&x<127)?String.fromCharCode(x):".").join("");
+      const impl=bytes.some(x=>x!=null);
+      return `<div class="row" style="cursor:default;${impl?'':'opacity:.45'}">
+          <span class="a">A${g.address}</span>
+          <span class="lvl" style="font-family:monospace;font-size:11px">${impl?hex:'(bank 3 not implemented)'}</span>
+        </div><div class="muted" style="font-family:monospace;font-size:11px;padding:0 12px 6px 40px">${impl?asc:''}</div>`;
+    }).join("");
+    $("#detail").innerHTML=`
+      <div class="card">
+        <h2>Lunatone config — bank ${d.bank} dump</h2>
+        <div class="muted">A device whose bank 3 <b>is implemented</b> (non-empty) is likely a Lunatone
+          device that stores its configuration here — including, for switches, the target/destination
+          address each button sends to. Compare this with the Bus Monitor (which address a press
+          targets) to locate the switch and its destination byte(s).</div>
+        <div style="margin-top:10px">${rows||'<span class="muted">No gear found.</span>'}</div>
+      </div>`;
+  }catch(e){ $("#detail").innerHTML='<div class="card">Failed: '+e.message+'</div>'; }
+  finally{ b.disabled=false; b.textContent="Scan Lunatone"; }
 }
 
 // ---- Switch mapping configurator (physical DALI switch -> HA entity) ----

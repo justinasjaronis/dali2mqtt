@@ -125,3 +125,25 @@ async def test_read_pushbutton(driver):
     assert res["instance_type"] == 1
     assert res["timers"]["short"] == 20
     assert res["timers"]["stuck"] == 20
+
+
+async def test_scan_lunatone(driver):
+    pending = list(range(1, 33))
+    def responder(cmd):
+        n = cname(cmd)
+        a = getattr(getattr(cmd, "destination", None), "address", None)
+        if n == "QueryControlGearPresent":
+            from conftest import yes, no
+            return yes() if a == 6 else no()
+        if n == "QueryDeviceType":
+            return numeric(8)
+        if n == "ReadMemoryLocation":
+            return RawResp(raw_int=(pending.pop(0) if pending else 0))
+        return None
+    driver._responder = responder
+    cfg = DaliConfig(driver)
+    res = await cfg.scan_lunatone(bank=3, count=32, addresses=range(0, 8))
+    assert [g["address"] for g in res] == [6]
+    assert res[0]["bank"] == 3
+    assert len(res[0]["data"]) == 32
+    assert res[0]["data"][0] == 1

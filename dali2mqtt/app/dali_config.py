@@ -183,6 +183,46 @@ class DaliConfig:
         logger.info("Config scan found %d control gear", len(result))
         return result
 
+    async def scan_lunatone(self, bank=3, count=32, addresses=range(64)):
+        """Read a Lunatone config memory bank from every control gear.
+
+        Lunatone DALI-1 input devices (switches) occupy a short address and
+        store their button configuration (destination address, command, button
+        function) in a proprietary memory bank (typically bank 3). This dumps
+        that bank for each present gear so switches can be identified and their
+        destination mapping inspected.
+        """
+        await self._ready()
+        result = []
+        async with self._guard():
+            for a in addresses:
+                short = address.Short(a)
+                present = await self._q(gear.QueryControlGearPresent(short))
+                if not (isinstance(present, YesNoResponse) and present.value):
+                    continue
+                gtin = self._resp_byte(
+                    await self._q(gear.QueryDeviceType(short))
+                )
+
+                def _seq(sh=short):
+                    out = []
+                    yield gear.DTR1(int(bank))
+                    yield gear.DTR0(0)
+                    for _ in range(int(count)):
+                        r = yield gear.ReadMemoryLocation(sh)
+                        out.append(self._resp_byte(r))
+                    return out
+
+                try:
+                    data = await self.driver.run_sequence(_seq())
+                except DALIError:
+                    data = None
+                result.append(
+                    {"address": a, "bank": int(bank), "device_type": gtin, "data": data}
+                )
+        logger.info("Lunatone scan read bank %s from %d gear", bank, len(result))
+        return result
+
     async def _q(self, command):
         try:
             return await self.driver.send(command)

@@ -40,6 +40,7 @@ class DaliWebServer:
         app = web.Application()
         app.router.add_get("/", self.index)
         app.router.add_get("/api/scan", self.api_scan)
+        app.router.add_get("/api/scan_lunatone", self.api_scan_lunatone)
         app.router.add_post("/api/gear/{addr}/level", self.api_level)
         app.router.add_post("/api/gear/{addr}/set", self.api_set)
         app.router.add_post("/api/gear/{addr}/identify", self.api_identify)
@@ -89,6 +90,17 @@ class DaliWebServer:
             return _json({"gear": gear})
         except Exception as err:  # noqa: BLE001
             logger.exception("scan failed")
+            return _json({"error": str(err)}, 500)
+
+    async def api_scan_lunatone(self, request):
+        q = request.query
+        try:
+            bank = int(q.get("bank", "3"))
+            count = int(q.get("count", "32"))
+            res = await self.cfg.scan_lunatone(bank=bank, count=count)
+            return _json({"gear": res, "bank": bank})
+        except Exception as err:  # noqa: BLE001
+            logger.exception("lunatone scan failed")
             return _json({"error": str(err)}, 500)
 
     async def _body(self, request):
