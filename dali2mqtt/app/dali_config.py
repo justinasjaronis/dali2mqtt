@@ -20,6 +20,15 @@ from dali.exceptions import DALIError
 from dali.sequences import Commissioning
 
 try:
+    import dali.gear.colour as _colour
+except Exception:  # noqa: BLE001
+    _colour = None
+try:
+    import dali.gear.emergency as _emergency
+except Exception:  # noqa: BLE001
+    _emergency = None
+
+try:
     from dali.memory import diagnostics as _mem_diag
     from dali.memory import energy as _mem_energy
     from dali.memory import info as _mem_info
@@ -307,6 +316,163 @@ class DaliConfig:
         except Exception:  # noqa: BLE001
             pass
         return str(val)
+
+    # ----------------------------------------------------- DALI command console
+    _CONSOLE_COMMANDS = {
+        "off": ("Off", None),
+        "recall_max": ("RecallMaxLevel", None),
+        "recall_min": ("RecallMinLevel", None),
+        "up": ("Up", None),
+        "down": ("Down", None),
+        "step_up": ("StepUp", None),
+        "step_down": ("StepDown", None),
+        "on_and_step_up": ("OnAndStepUp", None),
+        "goto_last_active": ("GoToLastActiveLevel", None),
+        "dapc": ("DAPC", "level"),          # arg 0-254
+        "goto_scene": ("GoToScene", "scene"),  # arg 0-15
+    }
+
+    def _target(self, kind, addr):
+        if kind == "broadcast":
+            return address.Broadcast()
+        if kind == "group":
+            return address.Group(int(addr))
+        return address.Short(int(addr))
+
+    async def send_command(self, kind, addr, command, arg=None):
+        """Send one curated DALI command to a short/group/broadcast target."""
+        if command not in self._CONSOLE_COMMANDS:
+            raise ValueError(f"unknown command {command}")
+        await self._ready()
+        cls_name, arg_kind = self._CONSOLE_COMMANDS[command]
+        dest = self._target(kind, addr)
+        cls = getattr(gear, cls_name)
+        async with self._guard():
+            if command == "dapc":
+                cmd = gear.DAPC(dest, int(arg))
+            elif command == "goto_scene":
+                cmd = gear.GoToScene(dest, int(arg))
+            else:
+                cmd = cls(dest)
+            resp = await self.driver.send(cmd)
+        return {"ok": True, "command": str(cmd), "response": str(resp) if resp is not None else None}
+
+    # ----------------------------------------------------- colour control (DT8)
+    async def read_colour(self, addr):
+        if _colour is None:
+            raise RuntimeError("colour module unavailable")
+        await self._ready()
+        short = address.Short(addr)
+        async with self._guard():
+            status = await self._q(_colour.QueryColourStatus(short))
+            feat = await self._q(_colour.QueryColourTypeFeatures(short))
+        return {
+            "address": addr,
+            "colour_status": self._mem_display(status.value) if status and getattr(status, "raw_value", None) is not None else None,
+            "colour_features": _val(feat),
+        }
+
+    async def set_colour_temp(self, addr, mireds):
+        """Set tunable-white colour temperature (mireds) on a DT8 gear."""
+        if _colour is None:
+            raise RuntimeError("colour module unavailable")
+        await self._ready()
+        short = address.Short(addr)
+        mireds = int(mireds)
+
+        def _seq():
+            yield gear.DTR0(mireds & 0xFF)
+            yield gear.DTR1((mireds >> 8) & 0xFF)
+            yield _colour.SetTemporaryColourTemperature(short)
+            yield _colour.Activate(short)
+
+        async with self._guard():
+            await self.driver.run_sequence(_seq())
+        return {"ok": True, "mireds": mireds}
+
+    async def set_colour_rgb(self, addr, r, g, b):
+        """Set RGB dim levels (0-254 each) on a DT8 RGBWAF gear."""
+        if _colour is None:
+            raise RuntimeError("colour module unavailable")
+        await self._ready()
+        short = address.Short(addr)
+
+        def _seq():
+            yield gear.DTR0(int(r) & 0xFF)
+            yield gear.DTR1(int(g) & 0xFF)
+            yield gear.DTR2(int(b) & 0xFF)
+            yield _colour.SetTemporaryRGBDimLevel(short)
+            yield _colour.Activate(short)
+
+        async with self._guard():
+            await self.driver.run_sequence(_seq())
+        return {"ok": True, "rgb": [int(r), int(g), int(b)]}
+
+    # ------------------------------------------------- emergency lighting (DT1)
+    async def read_emergency(self, addr):
+        if _emergency is None:
+            raise RuntimeError("emergency module unavailable")
+        await self._ready()
+        short = address.Short(addr)
+        async with self._guard():
+            out = {"address": addr}
+            status = await self._q(_emergency.QueryEmergencyStatus(short))
+            out["status"] = self._mem_display(status.value) if status and getattr(status, "raw_value", None) is not None else None
+            mode = await self._q(_emergency.QueryEmergencyMode(short))
+            out["mode"] = self._mem_display(mode.value) if mode and getattr(mode, "raw_value", None) is not None else None
+            out["battery_charge"] = _val(await self._q(_emergency.QueryBatteryCharge(short)))
+            out["rated_duration_min"] = self._maybe_mul(_val(await self._q(_emergency.QueryRatedDuration(short))), 2)
+            out["duration_test_result_min"] = self._maybe_mul(_val(await self._q(_emergency.QueryDurationTestResult(short))), 2)
+            out["lamp_emergency_time_h"] = _val(await self._q(_emergency.QueryLampEmergencyTime(short)))
+        return out
+
+    @staticmethod
+    def _maybe_mul(v, factor):
+        return v * factor if isinstance(v, int) else v
+
+    async def emergency_test(self, addr, kind):
+        if _emergency is None:
+            raise RuntimeError("emergency module unavailable")
+        await self._ready()
+        short = address.Short(addr)
+        cmd_map = {
+            "function": _emergency.StartFunctionTest,
+            "duration": _emergency.StartDurationTest,
+            "stop": _emergency.StopTest,
+        }
+        if kind not in cmd_map:
+            raise ValueError(f"unknown test {kind}")
+        async with self._guard():
+            await self.driver.send(cmd_map[kind](short))
+        return {"ok": True, "test": kind}
+
+    # -------------------------------------------------- writable typed memory
+    def _find_typed(self, name):
+        for _grp, module in _MEMORY_GROUPS:
+            for n, cls in self._mem_value_classes(module):
+                if n == name:
+                    return cls
+        return None
+
+    async def write_typed(self, addr, name, value):
+        """Write a writable typed memory value (e.g. an OEM/luminaire field)."""
+        if not _HAVE_MEMORY:
+            raise RuntimeError("memory module unavailable")
+        cls = self._find_typed(name)
+        if cls is None:
+            raise ValueError(f"unknown field {name}")
+        if not all(loc.type_ in _MEM_RW_TYPES for loc in cls.locations):
+            raise ValueError(f"{name} is read-only")
+        await self._ready()
+        short = address.Short(addr)
+        # Coerce the value: try int, else pass through as string.
+        try:
+            coerced = int(value)
+        except (TypeError, ValueError):
+            coerced = value
+        async with self._guard():
+            await self.driver.run_sequence(cls.write(short, coerced))
+        return {"ok": True, "field": name, "value": coerced}
 
     async def scan_lunatone(self, bank=3, count=32, addresses=range(64)):
         """Read a Lunatone config memory bank from every control gear.

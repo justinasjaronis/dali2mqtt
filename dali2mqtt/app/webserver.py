@@ -42,6 +42,14 @@ class DaliWebServer:
         app.router.add_get("/api/scan", self.api_scan)
         app.router.add_get("/api/scan_lunatone", self.api_scan_lunatone)
         app.router.add_get("/api/gear/{addr}/device_info", self.api_device_typed_info)
+        app.router.add_post("/api/gear/{addr}/device_info/write", self.api_typed_write)
+        # DALI command console + colour (DT8) + emergency (DT1)
+        app.router.add_post("/api/command", self.api_command)
+        app.router.add_get("/api/gear/{addr}/colour", self.api_colour_read)
+        app.router.add_post("/api/gear/{addr}/colour/temp", self.api_colour_temp)
+        app.router.add_post("/api/gear/{addr}/colour/rgb", self.api_colour_rgb)
+        app.router.add_get("/api/gear/{addr}/emergency", self.api_emergency_read)
+        app.router.add_post("/api/gear/{addr}/emergency/test", self.api_emergency_test)
         app.router.add_post("/api/gear/{addr}/level", self.api_level)
         app.router.add_post("/api/gear/{addr}/set", self.api_set)
         app.router.add_post("/api/gear/{addr}/identify", self.api_identify)
@@ -98,6 +106,63 @@ class DaliWebServer:
             return _json(await self.cfg.read_typed_memory(self._addr(request)))
         except Exception as err:  # noqa: BLE001
             logger.exception("device_info failed")
+            return _json({"error": str(err)}, 500)
+
+    async def api_typed_write(self, request):
+        body = await self._body(request)
+        try:
+            return _json(await self.cfg.write_typed(
+                self._addr(request), body.get("name"), body.get("value")))
+        except ValueError as err:
+            return _json({"error": str(err)}, 400)
+        except Exception as err:  # noqa: BLE001
+            return _json({"error": str(err)}, 500)
+
+    async def api_command(self, request):
+        body = await self._body(request)
+        try:
+            return _json(await self.cfg.send_command(
+                body.get("kind", "short"), body.get("address"),
+                body.get("command"), body.get("arg")))
+        except ValueError as err:
+            return _json({"error": str(err)}, 400)
+        except Exception as err:  # noqa: BLE001
+            return _json({"error": str(err)}, 500)
+
+    async def api_colour_read(self, request):
+        try:
+            return _json(await self.cfg.read_colour(self._addr(request)))
+        except Exception as err:  # noqa: BLE001
+            return _json({"error": str(err)}, 500)
+
+    async def api_colour_temp(self, request):
+        body = await self._body(request)
+        try:
+            return _json(await self.cfg.set_colour_temp(self._addr(request), int(body["mireds"])))
+        except Exception as err:  # noqa: BLE001
+            return _json({"error": str(err)}, 500)
+
+    async def api_colour_rgb(self, request):
+        body = await self._body(request)
+        try:
+            return _json(await self.cfg.set_colour_rgb(
+                self._addr(request), int(body["r"]), int(body["g"]), int(body["b"])))
+        except Exception as err:  # noqa: BLE001
+            return _json({"error": str(err)}, 500)
+
+    async def api_emergency_read(self, request):
+        try:
+            return _json(await self.cfg.read_emergency(self._addr(request)))
+        except Exception as err:  # noqa: BLE001
+            return _json({"error": str(err)}, 500)
+
+    async def api_emergency_test(self, request):
+        body = await self._body(request)
+        try:
+            return _json(await self.cfg.emergency_test(self._addr(request), body.get("kind")))
+        except ValueError as err:
+            return _json({"error": str(err)}, 400)
+        except Exception as err:  # noqa: BLE001
             return _json({"error": str(err)}, 500)
 
     async def api_scan_lunatone(self, request):

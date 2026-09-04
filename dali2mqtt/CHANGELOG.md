@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.15.0
+
+- **DALI command console** (⌘ Commands): send curated commands (Off, Recall
+  Max/Min, Up/Down, Step, DAPC level, Go to scene, …) to a short address, group
+  or broadcast — like Cockpit's DALI Commands.
+- **Colour control (DT8)**: set colour temperature (mireds) and RGB dim levels,
+  read colour status.
+- **Emergency (DT1)**: read status/mode/battery/rated duration; start function
+  and duration tests, stop test.
+- **Writable typed fields**: editable OEM/luminaire (and other RW) fields in the
+  typed Device info page.
+
 ## 1.14.0
 
 - New: typed **Device info** page (Cockpit-style) on each control gear — decodes

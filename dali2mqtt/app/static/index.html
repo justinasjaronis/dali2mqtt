@@ -60,6 +60,7 @@
   <button id="btnScanLuna" onclick="scanLunatone()" title="Read Lunatone config bank (bank 3) from every gear — find switches &amp; their target addresses">Scan Lunatone</button>
   <button id="btnMon" onclick="toggleMonitor()" title="Watch live bus traffic — press a button to see what it sends (finds DALI-1 switches)">🔎 Bus monitor</button>
   <button id="btnSwitches" onclick="openSwitches()" title="Map physical DALI switches to Home Assistant entities">⚙ Switches</button>
+  <button id="btnCmd" onclick="openCommands()" title="Send raw DALI commands (like Cockpit DALI Commands)">⌘ Commands</button>
   <button onclick="reinit()" title="Refresh Home Assistant MQTT entities">Refresh HA entities</button>
   <span style="flex:1"></span>
   <button onclick="commission(false)" title="Assign addresses to new/unaddressed gear">Commission (new)</button>
@@ -214,6 +215,32 @@ function select(a){
     </div>
 
     <div class="card">
+      <h2>Colour <span class="muted" style="font-weight:400">— DT8 (tunable white / RGB)</span></h2>
+      <button onclick="loadColour(${a})">Read colour</button>
+      <div class="field" style="margin-top:8px"><label>Colour temp (mireds)</label>
+        <input type="number" id="ctMireds" min="100" max="1000" value="370" style="width:90px">
+        <button onclick="setColourTemp(${a})">Set Tc</button>
+        <span class="muted">~2700K=370, 4000K=250, 6500K=153</span></div>
+      <div class="field"><label>RGB</label>
+        <input type="number" id="cR" min="0" max="254" placeholder="R" style="width:60px">
+        <input type="number" id="cG" min="0" max="254" placeholder="G" style="width:60px">
+        <input type="number" id="cB" min="0" max="254" placeholder="B" style="width:60px">
+        <button onclick="setColourRgb(${a})">Set RGB</button></div>
+      <div id="colourbox" class="muted"></div>
+    </div>
+
+    <div class="card">
+      <h2>Emergency <span class="muted" style="font-weight:400">— DT1</span></h2>
+      <div class="cmds">
+        <button onclick="loadEmergency(${a})">Read status</button>
+        <button onclick="emergencyTest(${a},'function')">Function test</button>
+        <button onclick="emergencyTest(${a},'duration')">Duration test</button>
+        <button class="warn" onclick="emergencyTest(${a},'stop')">Stop test</button>
+      </div>
+      <div id="emgbox" class="muted" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
       <h2>Parameters</h2>
       ${cfgRow('MIN level','min_level',g.min_level)}
       ${cfgRow('MAX level','max_level',g.max_level)}
@@ -254,11 +281,84 @@ async function loadDeviceInfo(a){
       <div style="margin:8px 0 4px;font-weight:650">${g.group}</div>
       <table style="width:100%;border-collapse:collapse;font-size:12px">
         ${g.fields.map(f=>`<tr>
-          <td style="color:var(--muted);padding:2px 8px 2px 0;white-space:nowrap">${f.name}${f.writeable?' ✏️':''}</td>
-          <td style="font-family:monospace">${f.value}</td>
+          <td style="color:var(--muted);padding:2px 8px 2px 0;white-space:nowrap">${f.name}</td>
+          <td style="font-family:monospace">${f.writeable
+            ? `<input value="${f.value}" style="width:150px;font-family:monospace" data-fn="${f.name}"><button onclick="saveTyped(${a},'${f.name}',this)">Save</button>`
+            : f.value}</td>
           <td class="muted" style="text-align:right">bank ${f.bank}</td></tr>`).join("")}
       </table>`).join("");
   }catch(e){ box.textContent="Failed: "+e.message; }
+}
+async function saveTyped(a,name,btn){
+  const inp=btn.previousElementSibling;
+  try{ const r=await post(`api/gear/${a}/device_info/write`,{name,value:inp.value}); toast(name+" = "+r.value); }
+  catch(e){ toast("Write failed: "+e.message); }
+}
+// ---- Colour (DT8) ----
+async function loadColour(a){
+  const box=$("#colourbox"); box.textContent="Reading…";
+  try{ const d=await api(`api/gear/${a}/colour`); box.textContent="status: "+(d.colour_status??'–')+" · features: "+(d.colour_features??'–'); }
+  catch(e){ box.textContent="Failed (device may not be DT8): "+e.message; }
+}
+async function setColourTemp(a){
+  try{ await post(`api/gear/${a}/colour/temp`,{mireds:+$("#ctMireds").value}); toast("Colour temp set"); }
+  catch(e){ toast(e.message); }
+}
+async function setColourRgb(a){
+  try{ await post(`api/gear/${a}/colour/rgb`,{r:+$("#cR").value||0,g:+$("#cG").value||0,b:+$("#cB").value||0}); toast("RGB set"); }
+  catch(e){ toast(e.message); }
+}
+// ---- Emergency (DT1) ----
+async function loadEmergency(a){
+  const box=$("#emgbox"); box.textContent="Reading…";
+  try{
+    const d=await api(`api/gear/${a}/emergency`);
+    box.innerHTML=`status: ${d.status??'–'} · mode: ${d.mode??'–'} · battery: ${d.battery_charge??'–'}
+      · rated: ${d.rated_duration_min??'–'} min · last duration test: ${d.duration_test_result_min??'–'} min
+      · lamp emerg. time: ${d.lamp_emergency_time_h??'–'} h`;
+  }catch(e){ box.textContent="Failed (device may not be DT1): "+e.message; }
+}
+async function emergencyTest(a,kind){
+  if(kind==='stop' || confirm("Start "+kind+" test? A duration test fully discharges the battery.")){
+    try{ await post(`api/gear/${a}/emergency/test`,{kind}); toast("Emergency "+kind+" "+(kind==='stop'?'stopped':'started')); }
+    catch(e){ toast(e.message); }
+  }
+}
+// ---- DALI command console ----
+const CONSOLE_CMDS=[["off","Off"],["recall_max","Recall MAX"],["recall_min","Recall MIN"],["up","Up (dim)"],["down","Down (dim)"],["step_up","Step up"],["step_down","Step down"],["on_and_step_up","On & step up"],["goto_last_active","Go to last active"],["dapc","Set level (DAPC 0-254)"],["goto_scene","Go to scene (0-15)"]];
+function openCommands(){
+  if(monOn) stopMonitor();
+  SEL=null; SELDEV=null; renderList();
+  $("#detail").innerHTML=`
+    <div class="card">
+      <h2>DALI command console</h2>
+      <div class="muted">Send a raw DALI command to a short address, group, or broadcast (like Cockpit's “DALI Commands”). Use with care — these act on the live bus.</div>
+      <div class="field" style="flex-wrap:wrap;margin-top:10px">
+        <label style="width:auto">Target</label>
+        <select id="cmdKind" onchange="document.getElementById('cmdAddrWrap').style.display=this.value==='broadcast'?'none':''">
+          <option value="short">Short address</option>
+          <option value="group">Group</option>
+          <option value="broadcast">Broadcast</option>
+        </select>
+        <span id="cmdAddrWrap"><input type="number" id="cmdAddr" min="0" max="63" value="0" style="width:64px"></span>
+        <label style="width:auto">Command</label>
+        <select id="cmdName" onchange="document.getElementById('cmdArgWrap').style.display=['dapc','goto_scene'].includes(this.value)?'':'none'">
+          ${CONSOLE_CMDS.map(([v,l])=>`<option value="${v}">${l}</option>`).join("")}
+        </select>
+        <span id="cmdArgWrap" style="display:none"><input type="number" id="cmdArg" min="0" max="254" value="0" style="width:70px" placeholder="arg"></span>
+        <button class="primary" onclick="sendConsoleCmd()">Send</button>
+      </div>
+      <pre id="cmdLog" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;max-height:40vh;overflow:auto;white-space:pre-wrap;font-size:12px;margin:8px 0"></pre>
+    </div>`;
+}
+async function sendConsoleCmd(){
+  const kind=$("#cmdKind").value, command=$("#cmdName").value;
+  const body={kind, command, address:+($("#cmdAddr")?.value||0)};
+  if(['dapc','goto_scene'].includes(command)) body.arg=+$("#cmdArg").value;
+  try{
+    const r=await post("api/command",body);
+    const log=$("#cmdLog"); log.textContent=(new Date().toLocaleTimeString())+"  → "+r.command+(r.response?("  ⇐ "+r.response):"")+"\n"+log.textContent;
+  }catch(e){ toast("Failed: "+e.message); }
 }
 async function setLevel(a,v){ try{ await post(`api/gear/${a}/level`,{level:+v}); (gearOf(a)||{}).level=+v; }catch(e){toast(e.message);} }
 async function setField(a,field){
