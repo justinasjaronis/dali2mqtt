@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.13.0
+
+- Safety: **Re-address all** is hidden behind an "..." advanced toggle and
+  requires typing `READDRESS` (irreversible: every device loses its address and
+  the bus is re-indexed).
+- New: **Scan Lunatone** dumps the Lunatone config bank (bank 3) from every gear
+  to locate switches and their target addresses.
+
 ## 1.12.0
 
 - New: **Switch mapping configurator** in the DALI Config web UI (“⚙ Switches”).
