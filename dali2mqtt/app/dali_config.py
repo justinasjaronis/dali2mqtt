@@ -795,7 +795,7 @@ class DaliConfig:
             # 0x00 = all control devices react; 0x7F = only those without a
             # short address (Part 103 INITIALISE argument).
             yield device.Initialise(0x00 if readdress else 0x7F)
-            if readdress:
+            if readdress and not dry_run:
                 yield device.DTR0(0xFF)
                 yield device.SetShortAddress(address.DeviceBroadcast())
 
