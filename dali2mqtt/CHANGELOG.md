@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.0
+
+- Brightness-aware mirroring: when a mapped entity is a `light`, RecallMaxLevel
+  sets it to 100%, and an arc-power level (DAPC) on a non-lamp switch address is
+  mirrored as a brightness percentage (`light.turn_on brightness_pct`). Plain
+  switches and DALI-lamp addresses are unchanged (DAPC on lamp addresses stays
+  ignored to avoid feedback loops).
+
 ## 1.10.0
 
 - Switch mirror now follows the switch's **explicit** intent: `RecallMaxLevel`

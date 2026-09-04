@@ -83,19 +83,25 @@ def simulate_broadcast(action):
     return {"ok": True, "action": action, "entities": mirror.all_entities()}
 
 
-def mirror_action(command):
-    """Classify a DALI bus command as 'on', 'off', or None for HA mirroring.
+def mirror_action(command, is_lamp_addr=False):
+    """Classify a DALI bus command for HA mirroring.
 
-    Only commands that physical switches emit are matched -- RecallMaxLevel for
-    on, Off for off. The bridge controls lamps with DAPC (arc power), which is
-    deliberately NOT matched, so the mirror never reacts to the bridge's own
-    traffic (no feedback loop on self-mapped addresses).
+    Returns a ``(action, brightness_pct)`` tuple where action is 'on', 'off' or
+    None. RecallMaxLevel -> on 100%, Off -> off. For addresses that are NOT a
+    DALI lamp (e.g. a phantom switch address), an arc-power level (DAPC) is
+    mirrored as a brightness percentage. DAPC to real lamp addresses is ignored,
+    because the bridge itself controls lamps with DAPC (avoids a feedback loop).
     """
     if isinstance(command, Off):
-        return "off"
+        return ("off", None)
     if isinstance(command, gear.RecallMaxLevel):
-        return "on"
-    return None
+        return ("on", 100)
+    if not is_lamp_addr and isinstance(command, gear.DAPC):
+        level = command.power or 0
+        if level == 0:
+            return ("off", None)
+        return ("on", max(1, round(level / 254 * 100)))
+    return (None, None)
 
 
 def publish_bus_event(command, response):
@@ -575,7 +581,8 @@ def print_command_and_response(data_object, dev, command, response, config_comma
                 data_object["queue"].put_nowait(addr)
             # Mirror a whole-house broadcast all-off / all-on (e.g. a bedside
             # "everything off" switch) onto the mapped Home Assistant entities.
-            action = mirror_action(command)
+            # is_lamp_addr=True keeps this to RecallMax/Off only (no DAPC dimming).
+            action, _bpct = mirror_action(command, is_lamp_addr=True)
             if (
                 action
                 and isinstance(command.destination, address.Broadcast)
@@ -607,17 +614,18 @@ def print_command_and_response(data_object, dev, command, response, config_comma
             data_object["queue"].put_nowait(addr)
 
         # A physical switch mapped to this address: RecallMaxLevel -> turn the
-        # HA entity on, Off -> turn it off (explicit, not toggle).
-        action = mirror_action(command)
+        # HA entity on (brightness-capable lights follow the level), Off -> off.
+        is_lamp = addr in data_object["all_lamps"]
+        action, bpct = mirror_action(command, is_lamp_addr=is_lamp)
         if mirror is not None and action and mirror.is_mapped(addr):
             # set_address makes blocking HTTP calls to Home Assistant; run it
             # in a thread so it never stalls the asyncio event loop.
             try:
                 asyncio.get_event_loop().run_in_executor(
-                    None, mirror.set_address, addr, action
+                    None, mirror.set_address, addr, action, bpct
                 )
             except RuntimeError:
-                mirror.set_address(addr, action)
+                mirror.set_address(addr, action, bpct)
     except Exception as err:
         logger.error("Error processing DALI bus command: %s", err)
 

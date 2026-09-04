@@ -92,3 +92,30 @@ def test_set_address_unmapped_noop():
     m = make_mirror({20: ["dining"]})
     m.set_address(21, "on")
     assert m._client.calls == []
+
+
+class FakeClientLight:
+    def __init__(self):
+        self.calls = []
+    def connected(self):
+        return True
+    def find_entity(self, name, types):
+        return {"id": "light." + name.replace(" ", "_"), "dev_name": name, "state": "off"}
+    def execute_service(self, domain, service, data):
+        self.calls.append((domain, service, data))
+
+
+def test_set_address_brightness_on_light():
+    m = HAEntityMirror({15: ["living"]}, "http://h", "tok")
+    m._client = FakeClientLight()
+    m.set_address(15, "on", 50)
+    assert m._client.calls == [
+        ("light", "turn_on", {"entity_id": "light.living", "brightness_pct": 50})
+    ]
+
+
+def test_set_address_brightness_ignored_on_switch():
+    m = make_mirror({20: ["dining"]})   # FakeClient -> switch.* domain
+    m.set_address(20, "on", 50)
+    # switch has no brightness -> plain turn_on
+    assert m._client.calls == [("homeassistant", "turn_on", {"entity_id": "switch.mapped_dining"})]

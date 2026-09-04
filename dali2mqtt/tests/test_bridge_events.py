@@ -95,21 +95,21 @@ class _AllMirror:
     def set_all(self, action):
         self.set_all_calls.append(action)
 
-    def set_address(self, address, action):
-        self.set_address_calls.append((address, action))
+    def set_address(self, address, action, brightness_pct=None):
+        self.set_address_calls.append((address, action, brightness_pct))
 
 
-def _make_data(mirror):
-    return {"all_lamps": {}, "queue": asyncio.Queue(), "mirror": mirror}
+def _make_data(mirror, lamps=()):
+    return {"all_lamps": {a: None for a in lamps}, "queue": asyncio.Queue(), "mirror": mirror}
 
 
-async def _run_cmd(monkeypatch, command, mapped=()):
+async def _run_cmd(monkeypatch, command, mapped=(), lamps=()):
     bridge.config_busy.clear()
     monkeypatch.setattr(bridge, "Config", lambda: {"mqtt_base_topic": "dali2mqtt"})
     monkeypatch.setitem(bridge._runtime, "client",
                         type("C", (), {"publish": lambda s, t, p: None})())
     mirror = _AllMirror(mapped=mapped)
-    bridge.print_command_and_response(_make_data(mirror), None, command, None, False)
+    bridge.print_command_and_response(_make_data(mirror, lamps=lamps), None, command, None, False)
     await asyncio.sleep(0.05)   # let run_in_executor complete
     return mirror
 
@@ -173,27 +173,37 @@ async def test_ha_offline_is_ignored(monkeypatch):
 
 
 def test_mirror_action_classifier():
-    assert bridge.mirror_action(gear.Off(address.Short(20))) == "off"
-    assert bridge.mirror_action(gear.RecallMaxLevel(address.Short(20))) == "on"
-    # DAPC (bridge's own control) must not drive the mirror
-    assert bridge.mirror_action(gear.DAPC(address.Short(20), 254)) is None
-    assert bridge.mirror_action(gear.DAPC(address.Short(20), 0)) is None
+    assert bridge.mirror_action(gear.Off(address.Short(20))) == ("off", None)
+    assert bridge.mirror_action(gear.RecallMaxLevel(address.Short(20))) == ("on", 100)
+    # DAPC on a LAMP address is ignored (bridge's own control -> no feedback loop)
+    assert bridge.mirror_action(gear.DAPC(address.Short(20), 254), is_lamp_addr=True) == (None, None)
+    # DAPC on a non-lamp (phantom switch) address -> brightness percent
+    assert bridge.mirror_action(gear.DAPC(address.Short(20), 127), is_lamp_addr=False)[0] == "on"
+    assert bridge.mirror_action(gear.DAPC(address.Short(20), 0), is_lamp_addr=False) == ("off", None)
 
 
 async def test_switch_recallmax_turns_on(monkeypatch):
     m = await _run_cmd(monkeypatch, gear.RecallMaxLevel(address.Short(20)), mapped={20})
-    assert m.set_address_calls == [(20, "on")]
+    assert m.set_address_calls == [(20, "on", 100)]
 
 
 async def test_switch_off_turns_off(monkeypatch):
     m = await _run_cmd(monkeypatch, gear.Off(address.Short(20)), mapped={20})
-    assert m.set_address_calls == [(20, "off")]
+    assert m.set_address_calls == [(20, "off", None)]
 
 
-async def test_switch_dapc_ignored(monkeypatch):
-    # the bridge's own DAPC to a mapped address must not loop back
-    m = await _run_cmd(monkeypatch, gear.DAPC(address.Short(20), 200), mapped={20})
+async def test_switch_dapc_ignored_on_lamp(monkeypatch):
+    # DAPC to a mapped address that IS a DALI lamp must not loop back
+    m = await _run_cmd(monkeypatch, gear.DAPC(address.Short(20), 200), mapped={20}, lamps={20})
     assert m.set_address_calls == []
+
+
+async def test_switch_dapc_dims_nonlamp(monkeypatch):
+    # DAPC to a mapped phantom (non-lamp) address -> brightness percent
+    m = await _run_cmd(monkeypatch, gear.DAPC(address.Short(20), 127), mapped={20})
+    assert len(m.set_address_calls) == 1
+    addr, act, pct = m.set_address_calls[0]
+    assert (addr, act) == (20, "on") and pct == 50
 
 
 async def test_switch_unmapped_address_ignored(monkeypatch):

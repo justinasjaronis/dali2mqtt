@@ -51,17 +51,18 @@ class HAEntityMirror:
         for entity in self._switch_map.get(address, []):
             self._call_entity(entity, "toggle")
 
-    def set_address(self, address, action):
+    def set_address(self, address, action, brightness_pct=None):
         """Turn every entity mapped to a DALI address on/off.
 
         Used when a physical switch sends an explicit on-command
-        (RecallMaxLevel) or off-command (Off), rather than a toggle.
+        (RecallMaxLevel) or off-command (Off), rather than a toggle. When
+        `brightness_pct` is given and the target entity is a `light`, it is set
+        to that brightness percentage instead of a plain on.
         """
         if not self.enabled or action not in ("on", "off"):
             return
-        service = f"turn_{action}"
         for entity in self._switch_map.get(address, []):
-            self._call_entity(entity, service)
+            self._call_entity(entity, action, brightness_pct)
 
     def set_all(self, action):
         """Set every mapped entity to a fixed state (`on`/`off`).
@@ -71,11 +72,16 @@ class HAEntityMirror:
         """
         if not self.enabled or action not in ("on", "off"):
             return
-        service = f"turn_{action}"
         for entity in self.all_entities():
-            self._call_entity(entity, service)
+            self._call_entity(entity, action)
 
-    def _call_entity(self, entity, service):
+    def _call_entity(self, entity, action, brightness_pct=None):
+        """Apply an action ('on'/'off'/'toggle') to one mapped HA entity.
+
+        For a brightness-capable `light` entity with an explicit on-level, uses
+        `light.turn_on` with `brightness_pct`; otherwise the domain-agnostic
+        `homeassistant.turn_on/turn_off/toggle` service.
+        """
         try:
             if not self._client.connected():
                 return
@@ -83,9 +89,23 @@ class HAEntityMirror:
             if not ha_entity:
                 logger.warning("No Home Assistant entity matched '%s'", entity)
                 return
-            self._client.execute_service(
-                "homeassistant", service, {"entity_id": ha_entity["id"]}
-            )
-            logger.info("%s Home Assistant entity %s", service, ha_entity["id"])
+            entity_id = ha_entity["id"]
+            domain = entity_id.split(".")[0]
+            if (
+                action == "on"
+                and brightness_pct is not None
+                and domain == "light"
+            ):
+                self._client.execute_service(
+                    "light", "turn_on",
+                    {"entity_id": entity_id, "brightness_pct": int(brightness_pct)},
+                )
+                logger.info("light %s -> %s%%", entity_id, int(brightness_pct))
+            else:
+                self._client.execute_service(
+                    "homeassistant", f"turn_{action}" if action != "toggle" else "toggle",
+                    {"entity_id": entity_id},
+                )
+                logger.info("%s Home Assistant entity %s", action, entity_id)
         except Exception as err:  # noqa: BLE001 - never let mirroring break the bridge
-            logger.error("Failed to %s entity '%s': %s", service, entity, err)
+            logger.error("Failed to %s entity '%s': %s", action, entity, err)
