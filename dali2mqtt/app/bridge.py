@@ -102,14 +102,22 @@ def _supervisor_api(method, path, payload=None):
     return resp.json()
 
 
-def get_switch_map():
-    """Return the live switch_map as [{address, entities}] (sorted)."""
+def _live_mirror():
     data = _runtime.get("data")
-    mirror = data.get("mirror") if data else None
+    return data.get("mirror") if data else None
+
+
+def get_switch_map():
+    """Return {ready, switch_map}. `ready` is False until the bridge has
+    finished starting (so the UI never shows an empty map it could overwrite)."""
+    mirror = _live_mirror()
     sm = getattr(mirror, "_switch_map", {}) if mirror else {}
-    return [
-        {"address": a, "entities": list(ents)} for a, ents in sorted(sm.items())
-    ]
+    return {
+        "ready": mirror is not None,
+        "switch_map": [
+            {"address": a, "entities": list(ents)} for a, ents in sorted(sm.items())
+        ],
+    }
 
 
 def save_switch_map(entries):
@@ -117,6 +125,10 @@ def save_switch_map(entries):
 
     entries: [{"address": int, "entities": [str, ...]}, ...]
     """
+    # Refuse to save before the bridge is ready, so a save issued during startup
+    # (when the live map reads empty) can never wipe the stored mapping.
+    if _live_mirror() is None:
+        return {"ok": False, "error": "bridge is still starting — try again shortly"}
     clean = []
     for e in entries:
         addr = int(e["address"])

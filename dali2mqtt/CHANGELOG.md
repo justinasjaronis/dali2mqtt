@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.13.1
+
+- Switch configurator: guard against the ~20s bridge-startup window — the editor
+  now shows "still starting" instead of an empty list, and saving is refused
+  until the bridge is ready, so a mistimed save can never wipe the mapping.
+
 ## 1.13.0
 
 - Safety: **Re-address all** is hidden behind an "..." advanced toggle and

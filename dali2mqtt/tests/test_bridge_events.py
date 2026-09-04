@@ -214,11 +214,24 @@ async def test_switch_unmapped_address_ignored(monkeypatch):
 def test_get_switch_map(monkeypatch):
     mirror = type("M", (), {"_switch_map": {20: ["dining"], 10: ["sport room"]}})()
     monkeypatch.setitem(bridge._runtime, "data", {"mirror": mirror})
-    sm = bridge.get_switch_map()
-    assert sm == [
+    res = bridge.get_switch_map()
+    assert res["ready"] is True
+    assert res["switch_map"] == [
         {"address": 10, "entities": ["sport room"]},
         {"address": 20, "entities": ["dining"]},
     ]
+
+
+def test_get_switch_map_not_ready(monkeypatch):
+    monkeypatch.setitem(bridge._runtime, "data", None)
+    res = bridge.get_switch_map()
+    assert res["ready"] is False and res["switch_map"] == []
+
+
+def test_save_switch_map_refuses_when_not_ready(monkeypatch):
+    monkeypatch.setitem(bridge._runtime, "data", None)
+    res = bridge.save_switch_map([{"address": 20, "entities": ["dining"]}])
+    assert res["ok"] is False
 
 
 def test_save_switch_map(monkeypatch):

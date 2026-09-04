@@ -489,6 +489,10 @@ async function openSwitches(){
   $("#detail").innerHTML='<div class="card"><span class="spin"></span> Loading switch mapping…</div>';
   try{
     const [sm, ents] = await Promise.all([ api("api/switch_map"), api("api/ha_entities") ]);
+    if(sm.ready===false){
+      $("#detail").innerHTML='<div class="card">⏳ The bridge is still starting (scanning the DALI bus). Open <b>⚙ Switches</b> again in ~20 seconds — editing now could overwrite your mappings.</div>';
+      return;
+    }
     ENTITIES = ents.entities||[];
     renderSwitches(sm.switch_map||[]);
   }catch(e){ $("#detail").innerHTML='<div class="card">Failed: '+e.message+'</div>'; }

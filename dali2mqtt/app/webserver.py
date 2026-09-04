@@ -229,8 +229,8 @@ class DaliWebServer:
     # ------------------------------------------------ switch mapping config
     async def api_switchmap_get(self, request):
         if self.switchmap_get is None:
-            return _json({"switch_map": []})
-        return _json({"switch_map": self.switchmap_get()})
+            return _json({"ready": True, "switch_map": []})
+        return _json(self.switchmap_get())
 
     async def api_switchmap_save(self, request):
         if self.switchmap_save is None:
