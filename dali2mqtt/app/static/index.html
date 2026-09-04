@@ -208,6 +208,12 @@ function select(a){
     </div>
 
     <div class="card">
+      <h2>Device info <span class="muted" style="font-weight:400">— typed memory banks (Cockpit-style)</span></h2>
+      <button onclick="loadDeviceInfo(${a})">Read device info</button>
+      <div id="devinfo" class="muted" style="margin-top:8px">GTIN, firmware, hardware, energy, diagnostics, luminaire OEM data — decoded from the device's standard memory banks.</div>
+    </div>
+
+    <div class="card">
       <h2>Parameters</h2>
       ${cfgRow('MIN level','min_level',g.min_level)}
       ${cfgRow('MAX level','max_level',g.max_level)}
@@ -239,6 +245,21 @@ function select(a){
   loadScenes(a);
 }
 
+async function loadDeviceInfo(a){
+  const box=$("#devinfo"); box.innerHTML='<span class="spin"></span> Reading memory banks…';
+  try{
+    const d=await api(`api/gear/${a}/device_info`);
+    if(!(d.groups||[]).length){ box.textContent="No standard memory-bank data (device may implement only bank 0)."; return; }
+    box.innerHTML=d.groups.map(g=>`
+      <div style="margin:8px 0 4px;font-weight:650">${g.group}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        ${g.fields.map(f=>`<tr>
+          <td style="color:var(--muted);padding:2px 8px 2px 0;white-space:nowrap">${f.name}${f.writeable?' ✏️':''}</td>
+          <td style="font-family:monospace">${f.value}</td>
+          <td class="muted" style="text-align:right">bank ${f.bank}</td></tr>`).join("")}
+      </table>`).join("");
+  }catch(e){ box.textContent="Failed: "+e.message; }
+}
 async function setLevel(a,v){ try{ await post(`api/gear/${a}/level`,{level:+v}); (gearOf(a)||{}).level=+v; }catch(e){toast(e.message);} }
 async function setField(a,field){
   const v=+$("#f_"+field).value;

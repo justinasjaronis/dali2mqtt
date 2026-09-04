@@ -20,6 +20,37 @@ from dali.exceptions import DALIError
 from dali.sequences import Commissioning
 
 try:
+    from dali.memory import diagnostics as _mem_diag
+    from dali.memory import energy as _mem_energy
+    from dali.memory import info as _mem_info
+    from dali.memory import maintenance as _mem_maint
+    from dali.memory import oem as _mem_oem
+    from dali.memory.location import MemoryType as _MemoryType
+    from dali.memory.location import MemoryValue as _MemoryValue
+
+    _MEM_RW_TYPES = {
+        _MemoryType.RAM_RW,
+        _MemoryType.NVM_RW,
+        _MemoryType.NVM_RW_L,
+        _MemoryType.NVM_RW_P,
+    }
+
+    # Typed memory-bank groups (spec-accurate, from python-dali) — the data
+    # behind a Cockpit-style typed "device page".
+    _MEMORY_GROUPS = [
+        ("Device info", _mem_info),
+        ("OEM / luminaire", _mem_oem),
+        ("Energy", _mem_energy),
+        ("Diagnostics", _mem_diag),
+        ("Maintenance", _mem_maint),
+    ]
+    _HAVE_MEMORY = True
+except Exception:  # noqa: BLE001
+    _MEMORY_GROUPS = []
+    _MemoryValue = None
+    _HAVE_MEMORY = False
+
+try:
     import dali.device.general as device
     import dali.device.sequences as devseq
     from dali.device import pushbutton as pb
@@ -182,6 +213,100 @@ class DaliConfig:
                 result.append(info)
         logger.info("Config scan found %d control gear", len(result))
         return result
+
+    def memory_supported(self):
+        return _HAVE_MEMORY
+
+    @staticmethod
+    def _mem_value_classes(module):
+        out = []
+        for name, obj in vars(module).items():
+            if (
+                isinstance(obj, type)
+                and issubclass(obj, _MemoryValue)
+                and getattr(obj, "locations", None)
+                and obj.__module__ == module.__name__
+                and not name.endswith("_legacy")
+            ):
+                out.append((name, obj))
+        return out
+
+    async def read_typed_memory(self, addr):
+        """Read all standard typed memory-bank values (spec-accurate).
+
+        Produces a Cockpit-style typed device page: grouped, decoded fields
+        (device info, OEM/luminaire, energy, diagnostics, maintenance). Each
+        bank is read once and decoded locally.
+        """
+        if not _HAVE_MEMORY:
+            raise RuntimeError("python-dali memory module not available")
+        await self._ready()
+        short = address.Short(addr)
+        groups = []
+        async with self._guard():
+            for group_name, module in _MEMORY_GROUPS:
+                # bank -> [(name, cls)]
+                banks = {}
+                for name, cls in self._mem_value_classes(module):
+                    banks.setdefault(cls.bank.address, []).append((name, cls))
+                fields = []
+                for bank in sorted(banks):
+                    row = await self._read_whole_bank(short, bank)
+                    if not row:
+                        continue
+                    for name, cls in banks[bank]:
+                        try:
+                            val = cls.from_list(row)
+                        except Exception:  # noqa: BLE001 - not implemented on device
+                            continue
+                        fields.append(
+                            {
+                                "name": name,
+                                "bank": bank,
+                                "value": self._mem_display(val),
+                                "writeable": all(
+                                    loc.type_ in _MEM_RW_TYPES for loc in cls.locations
+                                ),
+                            }
+                        )
+                if fields:
+                    groups.append({"group": group_name, "fields": fields})
+        return {"address": addr, "groups": groups}
+
+    async def _read_whole_bank(self, short, bank):
+        """Read locations 0..last of a memory bank; returns a list indexed by
+        address, or None if the bank is not implemented."""
+
+        def _seq():
+            yield gear.DTR1(int(bank))
+            yield gear.DTR0(0)
+            r = yield gear.ReadMemoryLocation(short)
+            last = self._resp_byte(r)
+            if last is None:
+                return None
+            row = [last]
+            for _ in range(int(last)):
+                r = yield gear.ReadMemoryLocation(short)
+                row.append(self._resp_byte(r))
+            return row
+
+        try:
+            return await self.driver.run_sequence(_seq())
+        except DALIError:
+            return None
+
+    @staticmethod
+    def _mem_display(val):
+        if isinstance(val, (bytes, bytearray)):
+            return val.hex()
+        try:
+            import enum
+
+            if isinstance(val, enum.Enum):
+                return val.name
+        except Exception:  # noqa: BLE001
+            pass
+        return str(val)
 
     async def scan_lunatone(self, bank=3, count=32, addresses=range(64)):
         """Read a Lunatone config memory bank from every control gear.

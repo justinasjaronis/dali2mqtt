@@ -147,3 +147,27 @@ async def test_scan_lunatone(driver):
     assert res[0]["bank"] == 3
     assert len(res[0]["data"]) == 32
     assert res[0]["data"][0] == 1
+
+
+async def test_read_typed_memory(driver):
+    # Respond only for bank 0 (device info); other banks report "not implemented".
+    state = {"bank": None, "dtr0": 0}
+    def responder(cmd):
+        n = cname(cmd)
+        if n == "DTR1":
+            state["bank"] = dtr_value(cmd); return None
+        if n == "DTR0":
+            state["dtr0"] = dtr_value(cmd); return None
+        if n == "ReadMemoryLocation":
+            if state["bank"] == 0:
+                i = state["dtr0"]; state["dtr0"] += 1
+                return RawResp(raw_int=26 if i == 0 else (i * 7) % 251)
+            return RawResp(raw_int=None)   # bank not implemented
+        return None
+    driver._responder = responder
+    cfg = DaliConfig(driver)
+    res = await cfg.read_typed_memory(6)
+    names = [g["group"] for g in res["groups"]]
+    assert "Device info" in names
+    di = next(g for g in res["groups"] if g["group"] == "Device info")
+    assert any(f["name"] == "GTIN" for f in di["fields"])

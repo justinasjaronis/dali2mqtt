@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.14.0
+
+- New: typed **Device info** page (Cockpit-style) on each control gear — decodes
+  the standard memory banks into labelled fields: device info (GTIN, firmware,
+  hardware, Part 101/102/103 versions, identification), OEM/luminaire data,
+  energy (active/apparent), diagnostics (operating time, supply voltage,
+  temperature, thermal derating, light-source on-time, open/short circuit) and
+  maintenance. Uses spec-accurate python-dali memory definitions.
+
 ## 1.13.1
 
 - Switch configurator: guard against the ~20s bridge-startup window — the editor
