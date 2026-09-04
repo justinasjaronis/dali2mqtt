@@ -57,6 +57,7 @@
   <h1>⬤ DALI Config</h1>
   <button class="primary" id="btnScan" onclick="scan()">Scan bus</button>
   <button id="btnScanDev" onclick="scanDevices()" title="Scan DALI-2 control devices (buttons/sensors)">Scan devices</button>
+  <button id="btnDetect" onclick="detectSwitches()" title="Like DALI Cockpit: assign addresses to DALI-2 switches/sensors that have none, so they can be read &amp; configured">🎛 Detect switches</button>
   <button id="btnScanLuna" onclick="scanLunatone()" title="Read Lunatone config bank (bank 3) from every gear — find switches &amp; their target addresses">Scan Lunatone</button>
   <button id="btnMon" onclick="toggleMonitor()" title="Watch live bus traffic — press a button to see what it sends (finds DALI-1 switches)">🔎 Bus monitor</button>
   <button id="btnSwitches" onclick="openSwitches()" title="Map physical DALI switches to Home Assistant entities">⚙ Switches</button>
@@ -138,6 +139,42 @@ async function scanDevices(){
     toast("Found "+DEVICES.length+" control devices");
   }catch(e){ toast("Device scan failed: "+e.message); }
   finally{ b.disabled=false; b.textContent="Scan devices"; }
+}
+
+async function detectSwitches(){
+  const b=$("#btnDetect");
+  // Step 1: safe probe -- count uncommissioned DALI-2 devices, change nothing.
+  b.disabled=true; b.innerHTML='<span class="spin"></span> Probing…';
+  let found=0;
+  try{
+    const d = await post("api/commission_devices",{dry_run:true});
+    if(d.error) throw new Error(d.error);
+    found = d.found||0;
+  }catch(e){ toast("Probe failed: "+e.message); b.disabled=false; b.textContent="🎛 Detect switches"; return; }
+  finally{ b.disabled=false; b.textContent="🎛 Detect switches"; }
+
+  if(found===0){
+    toast("No uncommissioned DALI-2 devices found. If your switches send plain gear commands, use 🔎 Bus monitor + ⚙ Switches instead.");
+    return;
+  }
+  // Step 2: confirm before assigning addresses (this is how Cockpit does it).
+  const ok = confirm(
+    `Found ${found} DALI-2 control device(s) with no address (your switches / sensors).\n\n`+
+    `Assign short addresses to them now, exactly like DALI Cockpit does before it can `+
+    `read a switch's configuration?\n\n`+
+    `• This only touches the DALI-2 control-device layer — your lamps (control gear) are NOT affected.\n`+
+    `• Existing device addresses are preserved.\n`+
+    `• After this you can press "Scan devices" to read/configure each switch.`);
+  if(!ok) return;
+
+  b.disabled=true; b.innerHTML='<span class="spin"></span> Assigning…';
+  try{
+    const d = await post("api/commission_devices",{readdress:false});
+    if(d.error) throw new Error(d.error);
+    toast(`Assigned addresses to ${ (d.programmed||[]).length } device(s). Scanning…`);
+    await scanDevices();
+  }catch(e){ toast("Commissioning failed: "+e.message); }
+  finally{ b.disabled=false; b.textContent="🎛 Detect switches"; }
 }
 
 function selectDevice(a){

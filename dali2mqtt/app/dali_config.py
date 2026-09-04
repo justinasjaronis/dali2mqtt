@@ -18,6 +18,7 @@ import dali.gear.general as gear
 from dali.command import YesNoResponse
 from dali.exceptions import DALIError
 from dali.sequences import Commissioning
+from dali.sequences import sleep as seq_sleep
 
 try:
     import dali.gear.colour as _colour
@@ -731,6 +732,114 @@ class DaliConfig:
                 device.SetShortAddress(address.DeviceShort(int(old)))
             )
         return {"ok": True}
+
+    async def commission_devices(self, readdress=False, dry_run=False,
+                                 progress_cb=None):
+        """Commission DALI-2 control devices (Part 103), like DALI Cockpit.
+
+        Lunatone push-button / input modules are *control devices* (they show
+        up as ``eA0`` .. ``eA63``).  Until they have a short device address they
+        do not answer ``QueryDeviceStatus`` and cannot be read or configured --
+        this is why a plain scan finds nothing.  Cockpit assigns those addresses
+        with the randomise/compare/withdraw process (the same one used for
+        control gear, but on the 24-bit device layer); afterwards each switch is
+        addressable and its configuration can be read.
+
+        readdress=False : only address devices that currently have none (safe;
+                          existing device addresses are preserved).
+        readdress=True  : clear and re-assign ALL device short addresses.
+        dry_run=True    : run the search but never program an address -- use it
+                          to *count* how many uncommissioned devices are on the
+                          bus without changing anything.
+
+        Returns {"found": n, "programmed": [addr, ...], "dry_run": bool}.
+        """
+        if not _HAVE_DEVICE:
+            raise RuntimeError("control device support requires python-dali 0.11")
+        await self._ready()
+
+        found = {"n": 0}
+        programmed = []
+
+        def _prog(msg, **kw):
+            logger.info("Device commissioning: %s", msg)
+            if progress_cb:
+                progress_cb({"message": msg, **kw})
+
+        def _find_next(low, high):
+            """Binary-search the random-address space for the next device."""
+            yield device.SearchAddrH((high >> 16) & 0xFF)
+            yield device.SearchAddrM((high >> 8) & 0xFF)
+            yield device.SearchAddrL(high & 0xFF)
+            r = yield device.Compare()
+            present = bool(r) and r.value is True
+            if low == high:
+                if present:
+                    # A framing error on Compare means two devices share this
+                    # exact random address -> a clash we must re-randomise past.
+                    raw = getattr(r, "raw_value", None)
+                    return "clash" if getattr(raw, "error", False) else low
+                return None
+            if present:
+                mid = (low + high) // 2
+                res = yield from _find_next(low, mid)
+                if res is not None:
+                    return res
+                return (yield from _find_next(mid + 1, high))
+            return None
+
+        def _seq():
+            # Which short addresses are free to hand out?
+            available = list(range(64))
+            yield device.Terminate()
+            # 0x00 = all control devices react; 0x7F = only those without a
+            # short address (Part 103 INITIALISE argument).
+            yield device.Initialise(0x00 if readdress else 0x7F)
+            if readdress:
+                yield device.DTR0(0xFF)
+                yield device.SetShortAddress(address.DeviceBroadcast())
+
+            finished = False
+            while not finished:
+                yield device.Randomise()
+                yield seq_sleep(0.1)
+                low, high = 0, 0xFFFFFF
+                while low is not None:
+                    low = yield from _find_next(low, high)
+                    if low == "clash":
+                        _prog("Two devices picked the same address; retrying")
+                        break
+                    if low is None:
+                        finished = True
+                        break
+                    found["n"] += 1
+                    _prog(f"Device found at random address {low:#08x}")
+                    if dry_run:
+                        yield device.Withdraw()
+                        continue
+                    if available:
+                        new = available.pop(0)
+                        yield device.ProgramShortAddress(new)
+                        v = yield device.VerifyShortAddress(new)
+                        if v is not None and v.value is True:
+                            programmed.append(new)
+                            _prog(f"Programmed device short address {new}")
+                        else:
+                            _prog(f"Failed to verify device address {new}")
+                        yield device.Withdraw()
+                    else:
+                        _prog("No free device addresses left")
+                        finished = True
+                        break
+            yield device.Terminate()
+
+        async with self._guard():
+            await self.driver.run_sequence(_seq())
+        logger.info(
+            "Device commissioning done: found=%d programmed=%s dry_run=%s",
+            found["n"], programmed, dry_run,
+        )
+        return {"found": found["n"], "programmed": programmed, "dry_run": dry_run}
 
     # ------------------------------------------------------- memory bank tool
     def _mem_addr_mod(self, addr, is_device):

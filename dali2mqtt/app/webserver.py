@@ -61,6 +61,7 @@ class DaliWebServer:
         app.router.add_post("/api/reinit", self.api_reinit)
         # Control devices (DALI-2 buttons/sensors)
         app.router.add_get("/api/scan_devices", self.api_scan_devices)
+        app.router.add_post("/api/commission_devices", self.api_commission_devices)
         app.router.add_get("/api/device/{addr}", self.api_device_info)
         app.router.add_post("/api/device/{addr}/identify", self.api_device_identify)
         app.router.add_post("/api/device/{addr}/address", self.api_device_address)
@@ -259,6 +260,19 @@ class DaliWebServer:
         except Exception as err:  # noqa: BLE001
             logger.exception("device scan failed")
             return _json({"error": str(err)}, 500)
+
+    async def api_commission_devices(self, request):
+        body = await self._body(request)
+        readdress = bool(body.get("readdress", False))
+        dry_run = bool(body.get("dry_run", False))
+        try:
+            res = await self.cfg.commission_devices(
+                readdress=readdress, dry_run=dry_run
+            )
+        except Exception as err:  # noqa: BLE001
+            logger.exception("device commissioning failed")
+            return _json({"error": str(err)}, 500)
+        return _json(res)
 
     async def api_device_info(self, request):
         return _json(await self.cfg.read_device(self._addr(request)))
